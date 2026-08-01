@@ -33,7 +33,7 @@ struct DownloadArea: View {
                 if watcher.downloadFiles.first!.browser == .safari {
                     AppIcon(for: "com.apple.safari")
                 } else {
-                    Image(.chrome).resizable().scaledToFit().frame(width: 30, height: 30)
+                    Image("chrome").resizable().scaledToFit().frame(width: 30, height: 30)
                 }
                 VStack(alignment: .leading) {
                     Text("Download")

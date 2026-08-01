@@ -98,9 +98,11 @@ struct OpenNotchHUD: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     OpenNotchHUD(type: .constant(.volume), value: .constant(0.5), icon: .constant(""))
         .environmentObject(BoringViewModel())
         .padding()
         .background(Color.gray)
 }
+#endif

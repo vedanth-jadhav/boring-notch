@@ -57,7 +57,9 @@ struct ProgressIndicator: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     ProgressIndicator(type: .circle, progress: 0.8, color: Color.blue).padding()
         .frame(width: 200, height: 200)
 }
+#endif

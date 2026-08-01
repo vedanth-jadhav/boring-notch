@@ -19,6 +19,8 @@ struct LottieAnimationContainer: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     LottieAnimationContainer()
 }
+#endif

@@ -24,9 +24,26 @@ public enum NotchState {
     case open
 }
 
-public enum NotchViews {
+public enum NotchViews: Hashable {
     case home
     case shelf
+    case system
+    case buds
+}
+
+extension NotchViews {
+    var tabIndex: Int {
+        switch self {
+        case .home:
+            return 0
+        case .system:
+            return 1
+        case .buds:
+            return 2
+        case .shelf:
+            return 3
+        }
+    }
 }
 
 enum SettingsEnum {

@@ -92,6 +92,18 @@ extension Defaults.Keys {
     static let notchHeight = Key<CGFloat>("notchHeight", default: 32)
     //static let openLastTabByDefault = Key<Bool>("openLastTabByDefault", default: false)
     static let showOnLockScreen = Key<Bool>("showOnLockScreen", default: false)
+    static let lockScreenMusicWidget = Key<Bool>("lockScreenMusicWidget", default: true)
+    static let lockScreenCaffeine = Key<Bool>("lockScreenCaffeine", default: false)
+    static let lockScreenMusicPanelWidth = Key<Double>("lockScreenMusicPanelWidth", default: 350)
+    static let lockScreenMusicLiquidGlassVariant = Key<LiquidGlassVariant>(
+        "lockScreenMusicLiquidGlassVariant",
+        default: .defaultVariant
+    )
+    static let lockScreenPanelShowsBorder = Key<Bool>("lockScreenPanelShowsBorder", default: false)
+    static let lockScreenMusicUsesEnhancedLiquidBorder = Key<Bool>(
+        "lockScreenMusicUsesEnhancedLiquidBorder",
+        default: true
+    )
     static let hideFromScreenRecording = Key<Bool>("hideFromScreenRecording", default: false)
     
     // MARK: Appearance
@@ -129,6 +141,8 @@ extension Defaults.Keys {
     static let waitInterval = Key<Double>("waitInterval", default: 3)
     static let showShuffleAndRepeat = Key<Bool>("showShuffleAndRepeat", default: false)
     static let enableLyrics = Key<Bool>("enableLyrics", default: false)
+    static let enableLyricRomanization = Key<Bool>("enableLyricRomanization", default: true)
+    static let spotifySpDcCookie = Key<String>("spDcCookie", default: "")
     static let musicControlSlots = Key<[MusicControlButton]>(
         "musicControlSlots",
         default: MusicControlButton.defaultLayout

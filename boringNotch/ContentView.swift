@@ -7,6 +7,7 @@
 //
 
 import AVFoundation
+import AppKit
 import Combine
 import Defaults
 import KeyboardShortcuts
@@ -16,13 +17,11 @@ import SwiftUIIntrospect
 @MainActor
 struct ContentView: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject var webcamManager = WebcamManager.shared
 
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
+    @ObservedObject var cpuTemperatureMonitor = CPUTemperatureMonitor.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var brightnessManager = BrightnessManager.shared
-    @ObservedObject var volumeManager = VolumeManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -39,6 +38,9 @@ struct ContentView: View {
 
     // Shared interactive spring for movement/resizing to avoid conflicting animations
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
+    private let notchOpenAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
+    private let notchCloseAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
+    private let notchHeightAnimation = Animation.interactiveSpring(response: 0.46, dampingFraction: 0.86, blendDuration: 0.08)
 
     private let extendedHoverPadding: CGFloat = 30
     private let zeroHeightHoverPadding: CGFloat = 10
@@ -49,12 +51,27 @@ struct ContentView: View {
                 : cornerRadiusInsets.closed.top
     }
 
+    private var bottomCornerRadius: CGFloat {
+        ((vm.notchState == .open) && Defaults[.cornerRadiusScaling])
+            ? cornerRadiusInsets.opened.bottom
+            : cornerRadiusInsets.closed.bottom
+    }
+
     private var currentNotchShape: NotchShape {
         NotchShape(
             topCornerRadius: topCornerRadius,
-            bottomCornerRadius: ((vm.notchState == .open) && Defaults[.cornerRadiusScaling])
-                ? cornerRadiusInsets.opened.bottom
-                : cornerRadiusInsets.closed.bottom
+            bottomCornerRadius: bottomCornerRadius
+        )
+    }
+
+    private var currentTabTransition: AnyTransition {
+        let movingForward = coordinator.currentView.tabIndex >= coordinator.previousView.tabIndex
+        let insertionOffset = movingForward ? 18.0 : -18.0
+        let removalOffset = movingForward ? -12.0 : 12.0
+
+        return .asymmetric(
+            insertion: .offset(x: insertionOffset, y: 0).combined(with: .opacity),
+            removal: .offset(x: removalOffset, y: 0).combined(with: .opacity)
         )
     }
 
@@ -69,7 +86,7 @@ struct ContentView: View {
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
             && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed
         {
-            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
+            chinWidth += (closedLiveActivityIconSide + closedLiveActivityTrailingWidth + 20)
         } else if !coordinator.expandingView.show && vm.notchState == .closed
             && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
             && !vm.hideOnClosed
@@ -100,6 +117,11 @@ struct ContentView: View {
                         : cornerRadiusInsets.closed.bottom
                     )
                     .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
+                    .frame(
+                        width: vm.notchState == .open ? vm.notchSize.width : nil,
+                        height: vm.notchState == .open ? vm.notchSize.height : nil,
+                        alignment: .top
+                    )
                     .background(.black)
                     .clipShape(currentNotchShape)
                     .overlay(alignment: .top) {
@@ -118,16 +140,16 @@ struct ContentView: View {
                     )
                 
                 mainLayout
-                    .frame(height: vm.notchState == .open ? vm.notchSize.height : nil)
                     .conditionalModifier(true) { view in
-                        let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
-                        let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
-                        
                         return view
-                            .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
+                            .animation(vm.notchState == .open ? notchOpenAnimation : notchCloseAnimation, value: vm.notchState)
+                            .animation(vm.notchState == .open ? notchHeightAnimation : notchCloseAnimation, value: vm.notchSize.height)
                             .animation(.smooth, value: gestureProgress)
                     }
                     .contentShape(Rectangle())
+                    .overlay {
+                        ArrowCursorOverlay()
+                    }
                     .onHover { hovering in
                         handleHover(hovering)
                     }
@@ -154,18 +176,23 @@ struct ContentView: View {
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
                                     if self.vm.notchState == .open && !self.isHovering && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
-                                        self.vm.close()
+                                        self.doClose()
                                     }
                                 }
                             }
                         }
                     }
                     .onChange(of: vm.notchState) { _, newState in
+                        SystemStatsMonitor.shared.setIslandOpen(newState == .open)
+
                         if newState == .closed && isHovering {
                             withAnimation {
                                 isHovering = false
                             }
                         }
+                    }
+                    .onAppear {
+                        SystemStatsMonitor.shared.setIslandOpen(vm.notchState == .open)
                     }
                     .onChange(of: vm.isBatteryPopoverActive) {
                         if !vm.isBatteryPopoverActive && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
@@ -175,7 +202,7 @@ struct ContentView: View {
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
                                     if !self.vm.isBatteryPopoverActive && !self.isHovering && self.vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
-                                        self.vm.close()
+                                        self.doClose()
                                     }
                                 }
                             }
@@ -236,7 +263,7 @@ struct ContentView: View {
 
                 vm.dropEvent = false
                 if !SharingStateManager.shared.preventNotchClose {
-                    vm.close()
+                    doClose()
                 }
             }
         }
@@ -294,7 +321,7 @@ struct ContentView: View {
                           BoringFaceAnimation()
                        } else if vm.notchState == .open {
                            BoringHeader()
-                               .frame(height: max(24, vm.effectiveClosedNotchHeight))
+                               .frame(height: max(30, vm.effectiveClosedNotchHeight), alignment: .top)
                                .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
                        } else {
                            Rectangle().fill(.clear).frame(width: vm.closedNotchSize.width - 20, height: vm.effectiveClosedNotchHeight)
@@ -343,18 +370,26 @@ struct ContentView: View {
               }
               .zIndex(2)
             if vm.notchState == .open {
-                VStack {
-                    switch coordinator.currentView {
-                    case .home:
-                        NotchHomeView(albumArtNamespace: albumArtNamespace)
-                    case .shelf:
-                        ShelfView()
+                ZStack {
+                    Group {
+                        switch coordinator.currentView {
+                        case .home:
+                            NotchHomeView(albumArtNamespace: albumArtNamespace)
+                        case .system:
+                            SystemStatsView()
+                        case .buds:
+                            BudsNotchView()
+                        case .shelf:
+                            ShelfView()
+                        }
                     }
+                    .id(coordinator.currentView)
+                    .transition(currentTabTransition)
                 }
-                .transition(
-                    .scale(scale: 0.8, anchor: .top)
-                    .combined(with: .opacity)
-                    .animation(.smooth(duration: 0.35))
+                .clipped()
+                .animation(
+                    .interactiveSpring(response: 0.34, dampingFraction: 0.86, blendDuration: 0.08),
+                    value: coordinator.currentView
                 )
                 .zIndex(1)
                 .allowsHitTesting(vm.notchState == .open)
@@ -449,7 +484,13 @@ struct ContentView: View {
                 )
 
             HStack {
-                if useMusicVisualizer {
+                if cpuTemperatureMonitor.fireState != .none {
+                    CPUFireIndicator(sideLength: fireIndicatorSideLength)
+                        .id(cpuTemperatureMonitor.fireState)
+                        .frame(width: fireIndicatorSideLength, height: fireIndicatorSideLength)
+                        .clipped()
+                        .contentShape(Rectangle())
+                } else if useMusicVisualizer {
                     Rectangle()
                         .fill(
                             Defaults[.coloredSpectrogram]
@@ -468,15 +509,8 @@ struct ContentView: View {
                 }
             }
             .frame(
-                width: max(
-                    0,
-                    vm.effectiveClosedNotchHeight - 12
-                        + gestureProgress / 2
-                ),
-                height: max(
-                    0,
-                    vm.effectiveClosedNotchHeight - 12
-                ),
+                width: closedLiveActivityTrailingWidth + max(0, gestureProgress / 2),
+                height: closedLiveActivityIconSide,
                 alignment: .center
             )
         }
@@ -484,6 +518,28 @@ struct ContentView: View {
             height: vm.effectiveClosedNotchHeight,
             alignment: .center
         )
+    }
+
+    private var closedLiveActivityIconSide: CGFloat {
+        max(0, vm.effectiveClosedNotchHeight - 12)
+    }
+
+    private var closedLiveActivityTrailingWidth: CGFloat {
+        closedLiveActivityIconSide
+    }
+
+    private var fireIndicatorSideLength: CGFloat {
+        min(max(closedLiveActivityIconSide - 1, 14), 22)
+    }
+
+    private func CPUFireIndicator(sideLength: CGFloat) -> some View {
+        Text("🔥")
+            .font(.system(size: sideLength * 0.92))
+            .frame(width: sideLength, height: sideLength)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .clipped()
+            .accessibilityLabel("CPU temperature above 90 degrees")
     }
 
     @ViewBuilder
@@ -505,6 +561,13 @@ struct ContentView: View {
     private func doOpen() {
         withAnimation(animationSpring) {
             vm.open()
+        }
+    }
+
+    private func doClose() {
+        withAnimation(notchCloseAnimation) {
+            gestureProgress = .zero
+            vm.close()
         }
     }
 
@@ -550,7 +613,7 @@ struct ContentView: View {
                     }
                     
                     if self.vm.notchState == .open && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
-                        self.vm.close()
+                        self.doClose()
                     }
                 }
             }
@@ -600,8 +663,7 @@ struct ContentView: View {
                 isHovering = false
             }
             if !SharingStateManager.shared.preventNotchClose { 
-                gestureProgress = .zero
-                vm.close()
+                doClose()
             }
 
             if Defaults[.enableHaptics] {
@@ -651,6 +713,63 @@ struct GeneralDropTargetDelegate: DropDelegate {
     }
 }
 
+private struct ArrowCursorOverlay: NSViewRepresentable {
+    func makeNSView(context: Context) -> ArrowCursorView {
+        ArrowCursorView()
+    }
+
+    func updateNSView(_ nsView: ArrowCursorView, context: Context) {
+        nsView.window?.invalidateCursorRects(for: nsView)
+    }
+}
+
+private final class ArrowCursorView: NSView {
+    private var cursorTrackingArea: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .arrow)
+    }
+
+    override func updateTrackingAreas() {
+        if let cursorTrackingArea {
+            removeTrackingArea(cursorTrackingArea)
+        }
+
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
+            owner: self
+        )
+        addTrackingArea(trackingArea)
+        cursorTrackingArea = trackingArea
+
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+}
+
+#if !SWIFT_PACKAGE
 #Preview {
     let vm = BoringViewModel()
     vm.open()
@@ -658,3 +777,4 @@ struct GeneralDropTargetDelegate: DropDelegate {
         .environmentObject(vm)
         .frame(width: vm.notchSize.width, height: vm.notchSize.height)
 }
+#endif

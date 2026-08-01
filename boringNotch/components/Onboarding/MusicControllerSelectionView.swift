@@ -134,7 +134,9 @@ extension MediaControllerType {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     MusicControllerSelectionView(onContinue: {})
         .frame(width: 400, height: 600)
 }
+#endif

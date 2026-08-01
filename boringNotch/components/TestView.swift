@@ -87,6 +87,8 @@ struct FluidSlider: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     FluidSlider()
 }
+#endif

@@ -50,7 +50,13 @@ struct ExpandedItem {
 class BoringViewCoordinator: ObservableObject {
     static let shared = BoringViewCoordinator()
 
-    @Published var currentView: NotchViews = .home
+    @Published private(set) var previousView: NotchViews = .home
+    @Published var currentView: NotchViews = .home {
+        didSet {
+            guard oldValue != currentView else { return }
+            previousView = oldValue
+        }
+    }
     @Published var helloAnimationRunning: Bool = false
     private var sneakPeekDispatch: DispatchWorkItem?
     private var expandingViewDispatch: DispatchWorkItem?

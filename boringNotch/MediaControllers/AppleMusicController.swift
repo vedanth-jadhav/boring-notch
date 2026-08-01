@@ -130,9 +130,9 @@ class AppleMusicController: MediaControllerProtocol {
     
     func updatePlaybackInfo() async {
         guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
-        guard descriptor.numberOfItems >= 11 else { return }
+        guard descriptor.numberOfItems >= 10 else { return }
         var updatedState = self.playbackState
-        
+
         updatedState.isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
         updatedState.title = descriptor.atIndex(2)?.stringValue ?? "Unknown"
         updatedState.artist = descriptor.atIndex(3)?.stringValue ?? "Unknown"
@@ -144,12 +144,32 @@ class AppleMusicController: MediaControllerProtocol {
         updatedState.repeatMode = RepeatMode(rawValue: Int(repeatModeValue)) ?? .off
         let volumePercentage = descriptor.atIndex(9)?.int32Value ?? 50
         updatedState.volume = Double(volumePercentage) / 100.0
-        updatedState.artwork = descriptor.atIndex(10)?.data as Data?
-        let lovedState = descriptor.atIndex(11)?.booleanValue ?? false
+        let lovedState = descriptor.atIndex(10)?.booleanValue ?? false
         updatedState.isFavorite = lovedState
         updatedState.lastUpdated = Date()
         self.playbackState = updatedState
+
+        // Fetch artwork separately after publishing metadata — avoids serializing
+        // large binary data through the main AppleScript IPC.
+        let trackChanged = updatedState.title != self._lastArtworkTitle || updatedState.artist != self._lastArtworkArtist
+        if trackChanged {
+            self._lastArtworkTitle = updatedState.title
+            self._lastArtworkArtist = updatedState.artist
+            Task(priority: .background) { [weak self] in
+                guard let artworkData = await self?.fetchArtworkAsync() else { return }
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    var withArtwork = self.playbackState
+                    withArtwork.artwork = artworkData
+                    self.playbackState = withArtwork
+                }
+            }
+        }
     }
+
+    // Track last known artwork identifiers for change detection
+    private var _lastArtworkTitle: String = ""
+    private var _lastArtworkArtist: String = ""
     
     // MARK: - Private Methods
     
@@ -158,6 +178,29 @@ class AppleMusicController: MediaControllerProtocol {
         try? await AppleScriptHelper.executeVoid(script)
     }
     
+    /// Peek at the next track in the queue for speculative preloading.
+    func peekNextTrack() async -> (title: String, artist: String, album: String)? {
+        let script = """
+        tell application "Music"
+            try
+                set nextTrackName to name of next track
+                set nextTrackArtist to artist of next track
+                set nextTrackAlbum to album of next track
+                return {nextTrackName, nextTrackArtist, nextTrackAlbum}
+            on error
+                return {"", "", ""}
+            end try
+        end tell
+        """
+        guard let descriptor = try? await AppleScriptHelper.execute(script),
+              descriptor.numberOfItems >= 3,
+              let title = descriptor.atIndex(1)?.stringValue, !title.isEmpty,
+              let artist = descriptor.atIndex(2)?.stringValue
+        else { return nil }
+        let album = descriptor.atIndex(3)?.stringValue ?? ""
+        return (title, artist, album)
+    }
+
     private func fetchPlaybackInfoAsync() async throws -> NSAppleEventDescriptor? {
         let script = """
         tell application "Music"
@@ -179,22 +222,33 @@ class AppleMusicController: MediaControllerProtocol {
                     set repeatValue to 3
                 end if
 
-                try
-                    set artData to data of artwork 1 of current track
-                on error
-                    set artData to ""
-                end try
-                
                 set currentVolume to sound volume
                 set favoriteState to favorited of current track
-                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatValue, currentVolume, artData, favoriteState}
+                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatValue, currentVolume, favoriteState}
             on error
-                return {false, "Not Playing", "Unknown", "Unknown", 0, 0, false, 0, 50, "", false}
+                return {false, "Not Playing", "Unknown", "Unknown", 0, 0, false, 0, 50, false}
             end try
         end tell
         """
-        
+
         return try await AppleScriptHelper.execute(script)
+    }
+
+    /// Lightweight AppleScript to fetch only artwork data — avoids serializing
+    /// large binary blobs through the main metadata AppleScript IPC.
+    private func fetchArtworkAsync() async -> Data? {
+        let script = """
+        tell application "Music"
+            try
+                set artData to data of artwork 1 of current track
+                return artData
+            on error
+                return ""
+            end try
+        end tell
+        """
+        guard let descriptor = try? await AppleScriptHelper.execute(script) else { return nil }
+        return descriptor.data as Data?
     }
     
 }

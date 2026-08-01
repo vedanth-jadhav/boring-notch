@@ -19,7 +19,12 @@ struct LottieView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let animationView = LottieAnimationView()
         animationView.translatesAutoresizingMaskIntoConstraints = false
+        animationView.contentMode = .scaleAspectFit
+        animationView.backgroundBehavior = .pauseAndRestore
+
         let container = NSView()
+        container.wantsLayer = true
+        container.layer?.masksToBounds = true
         container.addSubview(animationView)
         NSLayoutConstraint.activate([
             animationView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -32,6 +37,8 @@ struct LottieView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         guard let animationView = nsView.subviews.first as? LottieAnimationView else { return }
+        nsView.layer?.masksToBounds = true
+        animationView.contentMode = .scaleAspectFit
         let lastURL = objc_getAssociatedObject(animationView, &Self.associatedURLKey) as? URL
         if lastURL != url {
             LottieAnimation.loadedFrom(url: url) { animation in
@@ -48,5 +55,12 @@ struct LottieView: NSViewRepresentable {
                 animationView.play()
             }
         }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
+        guard let animationView = nsView.subviews.first as? LottieAnimationView else { return }
+        animationView.stop()
+        animationView.animation = nil
+        objc_setAssociatedObject(animationView, &Self.associatedURLKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 }

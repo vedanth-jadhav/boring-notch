@@ -11,6 +11,7 @@ import IOKit
 import CoreGraphics
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
+    private static let temperatureReader = StatsCPUTemperatureReader()
     
     @objc func isAccessibilityAuthorized(with reply: @escaping (Bool) -> Void) {
         reply(AXIsProcessTrusted())
@@ -139,6 +140,20 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         reply(false)
     }
 
+    // MARK: - CPU Temperature
+
+    @objc func currentAverageCPUTemperature(with reply: @escaping (NSNumber?) -> Void) {
+        reply(Self.temperatureReader.currentAverageCelsius().map(NSNumber.init(value:)))
+    }
+
+    @objc func currentHottestCPUTemperature(with reply: @escaping (NSNumber?) -> Void) {
+        reply(Self.temperatureReader.currentHottestCelsius().map(NSNumber.init(value:)))
+    }
+
+    @objc func currentBatteryTemperature(with reply: @escaping (NSNumber?) -> Void) {
+        reply(currentBatteryTemperatureCelsius().map(NSNumber.init(value:)))
+    }
+
     // MARK: - Private helpers for DisplayServices / IOKit access
     private func displayServicesGetBrightness(displayID: CGDirectDisplayID, out: inout Float) -> Bool {
         guard let sym = dlsym(DisplayServicesHandle.handle, "DisplayServicesGetBrightness") else { return false }
@@ -173,6 +188,40 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
             IOObjectRelease(service)
         }
         return nil
+    }
+
+    private func currentBatteryTemperatureCelsius() -> Double? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+
+        var properties: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(service, &properties, kCFAllocatorDefault, 0) == kIOReturnSuccess,
+              let dictionary = properties?.takeRetainedValue() as? [String: Any] else {
+            return nil
+        }
+
+        if let rawTemperature = dictionary["Temperature"] as? NSNumber {
+            return batteryTemperatureCelsius(from: rawTemperature.doubleValue)
+        }
+
+        if let rawVirtualTemperature = dictionary["VirtualTemperature"] as? NSNumber {
+            return batteryTemperatureCelsius(from: rawVirtualTemperature.doubleValue)
+        }
+
+        return nil
+    }
+
+    private func batteryTemperatureCelsius(from rawValue: Double) -> Double {
+        if (2000...4000).contains(rawValue) {
+            return (rawValue / 10.0) - 273.15
+        }
+
+        if (200...1000).contains(rawValue) {
+            return rawValue / 10.0
+        }
+
+        return rawValue / 100.0
     }
 
     // MARK: - Helper handle for private framework

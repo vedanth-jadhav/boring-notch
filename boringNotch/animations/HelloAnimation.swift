@@ -152,7 +152,9 @@ extension View where Self: Shape {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     HelloAnimation(onFinish: {})
         .frame(width: 300, height: 100)
 }
+#endif

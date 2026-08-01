@@ -69,6 +69,8 @@ struct TipsView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     TipsView()
 }
+#endif

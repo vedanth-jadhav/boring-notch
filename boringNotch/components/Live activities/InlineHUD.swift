@@ -153,6 +153,7 @@ struct InlineHUD: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     InlineHUD(type: .constant(.brightness), value: .constant(0.4), icon: .constant(""), hoverAnimation: .constant(false), gestureProgress: .constant(0))
         .padding(.horizontal, 8)
@@ -160,3 +161,4 @@ struct InlineHUD: View {
         .padding()
         .environmentObject(BoringViewModel())
 }
+#endif

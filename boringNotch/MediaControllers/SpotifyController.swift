@@ -30,6 +30,7 @@ class SpotifyController: MediaControllerProtocol {
     var supportsFavorite: Bool { false }
 
     private var notificationTask: Task<Void, Never>?
+    private var pollingTask: Task<Void, Never>?
     
     // Constant for time between command and update
     private let commandUpdateDelay: Duration = .milliseconds(25)
@@ -39,6 +40,7 @@ class SpotifyController: MediaControllerProtocol {
     
     init() {
         setupPlaybackStateChangeObserver()
+        startPlaybackPolling()
         Task {
             if isActive() {
                 await updatePlaybackInfo()
@@ -57,9 +59,29 @@ class SpotifyController: MediaControllerProtocol {
             }
         }
     }
+
+    /// Spotify's distributed playback notification is not delivered reliably on all
+    /// macOS/Spotify combinations. Polling only while Spotify is running ensures
+    /// the selected source picks up playback that began before the observer did.
+    private func startPlaybackPolling() {
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                if let self, self.isActive() {
+                    await self.updatePlaybackInfo()
+                }
+
+                do {
+                    try await Task.sleep(for: .seconds(2))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
     
     deinit {
         notificationTask?.cancel()
+        pollingTask?.cancel()
         artworkFetchTask?.cancel()
     }
     
@@ -69,19 +91,19 @@ class SpotifyController: MediaControllerProtocol {
     func togglePlay() async { await executeCommand("playpause") }
     func nextTrack() async { await executeCommand("next track") }
     func previousTrack() async {
-        await executeAndRefresh("previous track")
+        await executeCommand("previous track")
     }
-    
+
     func seek(to time: Double) async {
-        await executeAndRefresh("set player position to \(time)")
+        await executeCommand("set player position to \(time)")
     }
-    
+
     func toggleShuffle() async {
-        await executeAndRefresh("set shuffling to not shuffling")
+        await executeCommand("set shuffling to not shuffling")
     }
-    
+
     func toggleRepeat() async {
-        await executeAndRefresh("set repeating to not repeating")
+        await executeCommand("set repeating to not repeating")
     }
     
     func setVolume(_ level: Double) async {
@@ -98,7 +120,7 @@ class SpotifyController: MediaControllerProtocol {
     
     func updatePlaybackInfo() async {
         guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
-        guard descriptor.numberOfItems >= 10 else { return }
+        guard descriptor.numberOfItems >= 11 else { return }
         
         let isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
         let currentTrack = descriptor.atIndex(2)?.stringValue ?? "Unknown"
@@ -110,6 +132,7 @@ class SpotifyController: MediaControllerProtocol {
         let isRepeating = descriptor.atIndex(8)?.booleanValue ?? false
         let volumePercentage = descriptor.atIndex(9)?.int32Value ?? 50
         let artworkURL = descriptor.atIndex(10)?.stringValue ?? ""
+        let spotifyURL = descriptor.atIndex(11)?.stringValue ?? ""
         
         var state = PlaybackState(
             bundleIdentifier: "com.spotify.client",
@@ -124,7 +147,8 @@ class SpotifyController: MediaControllerProtocol {
             repeatMode: isRepeating ? .all : .off,
             lastUpdated: Date(),
             artwork: nil,
-            volume: Double(volumePercentage) / 100.0
+            volume: Double(volumePercentage) / 100.0,
+            trackID: Self.spotifyTrackID(from: spotifyURL)
         )
 
         if artworkURL == lastArtworkURL, let existingArtwork = self.playbackState.artwork {
@@ -187,15 +211,67 @@ class SpotifyController: MediaControllerProtocol {
                 set shuffleState to shuffling
                 set repeatState to repeating
                 set currentVolume to sound volume
-                set artworkURL to artwork url of current track
-                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatState, currentVolume, artworkURL}
+                try
+                    set artworkURL to artwork url of current track
+                on error
+                    set artworkURL to ""
+                end try
+                try
+                    set currentSpotifyURL to spotify url of current track
+                on error
+                    set currentSpotifyURL to ""
+                end try
+                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatState, currentVolume, artworkURL, currentSpotifyURL}
             on error
-                return {false, "Unknown", "Unknown", "Unknown", 0, 0, false, false, 50, ""}
+                return {false, "Unknown", "Unknown", "Unknown", 0, 0, false, false, 50, "", ""}
             end try
         end tell
         """
         
         return try await AppleScriptHelper.execute(script)
     }
-    
+
+    private static func spotifyTrackID(from urlString: String) -> String? {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.hasPrefix("spotify:track:") {
+            return String(trimmed.dropFirst("spotify:track:".count))
+        }
+
+        if let url = URL(string: trimmed),
+           url.host?.contains("spotify.com") == true {
+            let parts = url.pathComponents
+            if let trackIndex = parts.firstIndex(of: "track"),
+               parts.indices.contains(trackIndex + 1) {
+                return parts[trackIndex + 1]
+            }
+        }
+
+        return nil
+    }
+
+    /// Peek at the next track in Spotify's queue for speculative preloading.
+    func peekNextTrack() async -> (title: String, artist: String, album: String)? {
+        let script = """
+        tell application "Spotify"
+            try
+                set nextTrackName to name of next track
+                set nextTrackArtist to artist of next track
+                set nextTrackAlbum to album of next track
+                return {nextTrackName, nextTrackArtist, nextTrackAlbum}
+            on error
+                return {"", "", ""}
+            end try
+        end tell
+        """
+        guard let descriptor = try? await AppleScriptHelper.execute(script),
+              descriptor.numberOfItems >= 3,
+              let title = descriptor.atIndex(1)?.stringValue, !title.isEmpty,
+              let artist = descriptor.atIndex(2)?.stringValue
+        else { return nil }
+        let album = descriptor.atIndex(3)?.stringValue ?? ""
+        return (title, artist, album)
+    }
+
 }

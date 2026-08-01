@@ -241,10 +241,58 @@ final class XPCHelperClient: NSObject {
             return false
         }
     }
+
+    // MARK: - CPU Temperature
+
+    nonisolated func currentAverageCPUTemperature() async -> Double? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let result: NSNumber? = try await service.withContinuation { service, continuation in
+                service.currentAverageCPUTemperature { value in
+                    continuation.resume(returning: value)
+                }
+            }
+            return result?.doubleValue
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated func currentHottestCPUTemperature() async -> Double? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let result: NSNumber? = try await service.withContinuation { service, continuation in
+                service.currentHottestCPUTemperature { value in
+                    continuation.resume(returning: value)
+                }
+            }
+            return result?.doubleValue
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated func currentBatteryTemperature() async -> Double? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let result: NSNumber? = try await service.withContinuation { service, continuation in
+                service.currentBatteryTemperature { value in
+                    continuation.resume(returning: value)
+                }
+            }
+            return result?.doubleValue
+        } catch {
+            return nil
+        }
+    }
 }
 
 extension Notification.Name {
     static let accessibilityAuthorizationChanged = Notification.Name("accessibilityAuthorizationChanged")
 }
-
-

@@ -30,9 +30,11 @@ struct EditPanelView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     EditPanelView()
 }
+#endif
 
 struct VisualEffectView: NSViewRepresentable {
     let material: NSVisualEffectView.Material

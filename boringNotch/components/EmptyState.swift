@@ -21,6 +21,8 @@ struct EmptyStateView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     EmptyStateView(message: "Play some music babies")
 }
+#endif

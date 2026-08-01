@@ -30,6 +30,8 @@ struct WhatsNewView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     WhatsNewView(isPresented: .constant(true))
 }
+#endif

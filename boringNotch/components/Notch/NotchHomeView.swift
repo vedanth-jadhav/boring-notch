@@ -19,7 +19,7 @@ struct MusicPlayerView: View {
     var body: some View {
         HStack {
             AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).padding(.all, 5)
-            MusicControlsView().drawingGroup().compositingGroup()
+            MusicControlsView().compositingGroup()
         }
     }
 }
@@ -28,6 +28,12 @@ struct AlbumArtView: View {
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var vm: BoringViewModel
     let albumArtNamespace: Namespace.ID
+
+    private var albumArtCornerRadius: CGFloat {
+        Defaults[.cornerRadiusScaling]
+            ? MusicPlayerImageSizes.cornerRadiusInset.opened
+            : MusicPlayerImageSizes.cornerRadiusInset.closed
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -42,17 +48,14 @@ struct AlbumArtView: View {
         Image(nsImage: musicManager.albumArt)
             .resizable()
             .clipped()
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: Defaults[.cornerRadiusScaling]
-                        ? MusicPlayerImageSizes.cornerRadiusInset.opened
-                        : MusicPlayerImageSizes.cornerRadiusInset.closed)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: albumArtCornerRadius))
             .aspectRatio(1, contentMode: .fit)
-            .scaleEffect(x: 1.3, y: 1.4)
+            .scaleEffect(x: 1.12, y: 1.16)
             .rotationEffect(.degrees(92))
-            .blur(radius: 40)
-            .opacity(musicManager.isPlaying ? 0.5 : 0)
+            .blur(radius: 22)
+            .opacity(musicManager.isPlaying ? 0.42 : 0)
+            .clipShape(RoundedRectangle(cornerRadius: albumArtCornerRadius + 10))
+            .compositingGroup()
     }
 
     private var albumArtButton: some View {
@@ -87,12 +90,7 @@ struct AlbumArtView: View {
             .aspectRatio(1, contentMode: .fit)
             .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
             .clipped()
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: Defaults[.cornerRadiusScaling]
-                        ? MusicPlayerImageSizes.cornerRadiusInset.opened
-                        : MusicPlayerImageSizes.cornerRadiusInset.closed)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: albumArtCornerRadius))
     }
 
     @ViewBuilder
@@ -384,14 +382,6 @@ struct VolumeControlView: View {
             if !supported {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showVolumeSlider = false
-                }
-            }
-        }
-        .onChange(of: showVolumeSlider) { _, isShowing in
-            if isShowing {
-                // Sync volume from app when slider appears
-                Task {
-                    await MusicManager.shared.syncVolumeFromActiveApp()
                 }
             }
         }

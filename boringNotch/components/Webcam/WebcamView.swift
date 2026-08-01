@@ -113,6 +113,8 @@ struct CameraPreviewLayerView: NSViewRepresentable {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     CameraPreviewView(webcamManager: .shared)
 }
+#endif

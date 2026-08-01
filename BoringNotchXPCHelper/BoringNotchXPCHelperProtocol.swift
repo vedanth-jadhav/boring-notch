@@ -20,6 +20,10 @@ import Foundation
     func isScreenBrightnessAvailable(with reply: @escaping (Bool) -> Void)
     func currentScreenBrightness(with reply: @escaping (NSNumber?) -> Void)
     func setScreenBrightness(_ value: Float, with reply: @escaping (Bool) -> Void)
+    // Average CPU temperature access using the Stats-derived SMC reader
+    func currentAverageCPUTemperature(with reply: @escaping (NSNumber?) -> Void)
+    func currentHottestCPUTemperature(with reply: @escaping (NSNumber?) -> Void)
+    func currentBatteryTemperature(with reply: @escaping (NSNumber?) -> Void)
 }
 
 /*

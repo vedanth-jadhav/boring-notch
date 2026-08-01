@@ -56,6 +56,8 @@ struct OnboardingFinishView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     OnboardingFinishView(onFinish: { }, onOpenSettings: { })
 }
+#endif

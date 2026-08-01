@@ -57,7 +57,6 @@ struct MarqueeText: View {
                     Text(text)
                         .opacity(needsScrolling ? 1 : 0)
                 }
-                .id(text)
                 .font(font)
                 .foregroundColor(textColor)
                 .fixedSize(horizontal: true, vertical: false)

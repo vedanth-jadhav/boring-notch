@@ -600,6 +600,9 @@ struct Media: View {
     @Default(.sneakPeekStyles) var sneakPeekStyles
 
     @Default(.enableLyrics) var enableLyrics
+    @Default(.enableLyricRomanization) var enableLyricRomanization
+    @Default(.spotifySpDcCookie) private var spotifySpDcCookie
+    @State private var showCookieHelp = false
 
     var body: some View {
         Form {
@@ -685,9 +688,65 @@ struct Media: View {
                         customBadge(text: "Beta")
                     }
                 }
+
+                Defaults.Toggle(key: .enableLyricRomanization) {
+                    Text("Romanize Punjabi/Hindi lyrics (→ Hinglish)")
+                }
+                .font(.caption)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        SecureField("Spotify sp_dc cookie (for synced lyrics)", text: $spotifySpDcCookie)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .frame(maxWidth: 280)
+
+                        HStack(spacing: 4) {
+                            Text("Unlocks synced lyrics from Spotify")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+
+                            if !spotifySpDcCookie.isEmpty {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.green)
+                            }
+
+                            Button {
+                                showCookieHelp = true
+                            } label: {
+                                Image(systemName: "questionmark.circle")
+                                    .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tertiary)
+                            .popover(isPresented: $showCookieHelp) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("How to find your Spotify sp_dc cookie")
+                                        .font(.headline)
+                                    Text("1. Open Spotify in a browser and log in")
+                                    Text("2. Open Developer Tools (Cmd+Option+I)")
+                                    Text("3. Go to Application → Cookies → open.spotify.com")
+                                    Text("4. Copy the value of the sp_dc cookie")
+                                    Text("5. Paste it above")
+                                        .padding(.bottom, 4)
+                                    Text("This cookie lets the app request synced lyrics directly from Spotify. It's stored locally and never shared.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Divider()
+                                    Link("Learn more on GitHub",
+                                         destination: URL(string: "https://github.com/aviwad/LyricFever?tab=readme-ov-file#setting-up-dynamic-island-on-macos")!)
+                                        .font(.caption)
+                                }
+                                .padding(12)
+                                .frame(width: 320)
+                            }
+                        }
+                    }
+                }
             } header: {
                 Text("Media controls")
-            }  footer: {
+            } footer: {
                 Text("Customize which controls appear in the music player. Volume expands when active.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1794,6 +1853,8 @@ func warningBadge(_ text: String, _ description: String) -> some View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     HUD()
 }
+#endif

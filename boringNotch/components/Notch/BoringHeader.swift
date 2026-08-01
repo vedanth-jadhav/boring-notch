@@ -10,18 +10,21 @@ import SwiftUI
 
 struct BoringHeader: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
+    @ObservedObject private var budsModel = BudsAppModel.shared
     @StateObject var tvm = ShelfStateViewModel.shared
+    @Default(.boringShelf) private var boringShelf
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             HStack {
-                if (!tvm.isEmpty || coordinator.alwaysShowTabs) && Defaults[.boringShelf] {
+                if coordinator.alwaysShowTabs || budsModel.shouldShowTab || (!tvm.isEmpty && boringShelf) {
                     TabSelectionView()
                 } else if vm.notchState == .open {
                     EmptyView()
                 }
             }
+            .frame(height: 30, alignment: .top)
+            .padding(.leading, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(vm.notchState == .closed ? 0 : 1)
             .blur(radius: vm.notchState == .closed ? 20 : 0)
@@ -48,7 +51,7 @@ struct BoringHeader: View {
                             }) {
                                 Capsule()
                                     .fill(.black)
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: 28, height: 28)
                                     .overlay {
                                         Image(systemName: "web.camera")
                                             .foregroundColor(.white)
@@ -58,48 +61,27 @@ struct BoringHeader: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                        if Defaults[.settingsIconInNotch] {
-                            Button(action: {
-                                DispatchQueue.main.async {
-                                    SettingsWindowController.shared.showWindow()
-                                }
-                                
-                            }) {
-                                Capsule()
-                                    .fill(.black)
-                                    .frame(width: 30, height: 30)
-                                    .overlay {
-                                        Image(systemName: "gear")
-                                            .foregroundColor(.white)
-                                            .padding()
-                                            .imageScale(.medium)
-                                    }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        if Defaults[.showBatteryIndicator] {
-                            BoringBatteryView(
-                                batteryWidth: 30,
-                                isCharging: batteryModel.isCharging,
-                                isInLowPowerMode: batteryModel.isInLowPowerMode,
-                                isPluggedIn: batteryModel.isPluggedIn,
-                                levelBattery: batteryModel.levelBattery,
-                                maxCapacity: batteryModel.maxCapacity,
-                                timeToFullCharge: batteryModel.timeToFullCharge,
-                                isForNotification: false
-                            )
+
+                        if Defaults[.enableLyrics] && !MusicManager.shared.lyricLines.isEmpty {
+                            // reserved for future lyrics features
                         }
                     }
                 }
             }
             .font(.system(.headline, design: .rounded))
+            .frame(height: 30, alignment: .top)
+            .padding(.trailing, 10)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .opacity(vm.notchState == .closed ? 0 : 1)
             .blur(radius: vm.notchState == .closed ? 20 : 0)
             .zIndex(2)
         }
         .foregroundColor(.gray)
+        .frame(height: 30, alignment: .top)
         .environmentObject(vm)
+        .onAppear {
+            budsModel.refreshClassicConnection()
+        }
     }
 
     func isHUDType(_ type: SneakContentType) -> Bool {
@@ -112,6 +94,8 @@ struct BoringHeader: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     BoringHeader().environmentObject(BoringViewModel())
 }
+#endif

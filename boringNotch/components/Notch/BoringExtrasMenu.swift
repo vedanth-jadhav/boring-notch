@@ -47,7 +47,7 @@ struct BoringExtrasMenu : View {
                     NSWorkspace.shared.open(url)
                 }
             },
-            icon: Image(.github),
+            icon: Image("Github"),
             title: "Checkout"
         )
     }
@@ -98,6 +98,8 @@ struct BoringExtrasMenu : View {
 }
 
 
+#if !SWIFT_PACKAGE
 #Preview {
     BoringExtrasMenu(vm: .init())
 }
+#endif

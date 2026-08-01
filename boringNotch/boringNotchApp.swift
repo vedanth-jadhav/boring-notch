@@ -64,6 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindowController: NSWindowController?
     private var screenLockedObserver: Any?
     private var screenUnlockedObserver: Any?
+    private var sessionActiveObserver: Any?
     private var isScreenLocked: Bool = false
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
@@ -82,7 +83,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DistributedNotificationCenter.default().removeObserver(observer)
             screenUnlockedObserver = nil
         }
+        if let observer = sessionActiveObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            sessionActiveObserver = nil
+        }
         MusicManager.shared.destroy()
+        CaffeineManager.shared.stop()
+        LockScreenMusicWindowManager.shared.hide()
         cleanupDragDetectors()
         cleanupWindows()
         XPCHelperClient.shared.stopMonitoringAccessibilityAuthorization()
@@ -91,9 +98,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func onScreenLocked(_ notification: Notification) {
         isScreenLocked = true
+        LockScreenMusicWindowManager.shared.show(screenUUID: vm.screenUUID)
+        CaffeineManager.shared.setActive(Defaults[.lockScreenCaffeine])
+        MusicManager.shared.forceUpdate()
+
         if !Defaults[.showOnLockScreen] {
             cleanupWindows()
         } else {
+            adjustWindowPosition(changeAlpha: true)
             enableSkyLightOnAllWindows()
         }
     }
@@ -101,10 +113,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func onScreenUnlocked(_ notification: Notification) {
         isScreenLocked = false
+        CaffeineManager.shared.stop()
+        LockScreenMusicWindowManager.shared.hide()
         if !Defaults[.showOnLockScreen] {
             adjustWindowPosition(changeAlpha: true)
         } else {
             disableSkyLightOnAllWindows()
+            adjustWindowPosition(changeAlpha: true)
         }
     }
     
@@ -196,7 +211,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let uuid = screen.displayUUID else { return }
         
         let screenFrame = screen.frame
-        let notchHeight = openNotchSize.height
+        let notchHeight = maximumOpenNotchHeight
         let notchWidth = openNotchSize.width
         
         // Create notch region at the top-center of the screen where an open notch would occupy
@@ -346,6 +361,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenUnlockedObserver = DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"),
             object: nil, queue: .main) { [weak self] notification in
+                Task { @MainActor in
+                    self?.onScreenUnlocked(notification)
+                }
+        }
+
+        sessionActiveObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.sessionDidBecomeActiveNotification,
+            object: nil,
+            queue: .main) { [weak self] notification in
                 Task { @MainActor in
                     self?.onScreenUnlocked(notification)
                 }

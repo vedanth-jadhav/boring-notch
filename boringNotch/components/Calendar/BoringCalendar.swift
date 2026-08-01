@@ -472,9 +472,11 @@ struct ReminderToggle: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     CalendarView()
         .frame(width: 215, height: 130)
         .background(.black)
         .environmentObject(BoringViewModel())
 }
+#endif

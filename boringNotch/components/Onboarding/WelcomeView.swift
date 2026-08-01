@@ -80,6 +80,8 @@ struct WelcomeView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     WelcomeView()
 }
+#endif

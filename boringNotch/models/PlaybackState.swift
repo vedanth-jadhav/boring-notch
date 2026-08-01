@@ -28,6 +28,7 @@ struct PlaybackState {
     var artwork: Data?
     var volume: Double = 0.5
     var isFavorite: Bool = false
+    var trackID: String?
 }
 
 extension PlaybackState: Equatable {
@@ -43,5 +44,6 @@ extension PlaybackState: Equatable {
             && lhs.repeatMode == rhs.repeatMode
             && lhs.artwork == rhs.artwork
             && lhs.isFavorite == rhs.isFavorite
+            && lhs.trackID == rhs.trackID
     }
 }
