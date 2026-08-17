@@ -229,13 +229,16 @@ jobs:
             notes+=" Auto-update code is wired to the beta release channel, but the signed appcast is intentionally not published until the repository owner provisions PRIVATE_SPARKLE_KEY matching the app's SUPublicEDKey."
           fi
 
-          gh release delete "$BETA_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
-          gh release create "$BETA_TAG" \
-            "${assets[@]}" \
-            --target "$HEAD_REF" \
-            --title "Boring Notch Beta" \
-            --notes "$notes" \
-            --prerelease
+          if gh release view "$BETA_TAG" >/dev/null 2>&1; then
+            gh release upload "$BETA_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$BETA_TAG" \
+              "${assets[@]}" \
+              --target "$HEAD_REF" \
+              --title "Boring Notch Beta" \
+              --notes "$notes" \
+              --prerelease
+          fi
 
       - name: Verify published beta assets
         env:
