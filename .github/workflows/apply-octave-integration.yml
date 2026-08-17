@@ -18,25 +18,26 @@ jobs:
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
-      - name: Update Octave validation marker
+      - name: Restore release-compatible Octave marker name
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('.github/workflows/build_reusable.yml')
+          path = Path('boringNotch/MediaControllers/NowPlayingController.swift')
           text = path.read_text()
-          old = "grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift"
-          new = "grep -q 'supportedBrowserBundleIdentifierPrefixes' boringNotch/MediaControllers/NowPlayingController.swift"
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected exactly one stale Octave marker, found {text.count(old)}')
+          old = 'supportedBrowserBundleIdentifierPrefixes'
+          new = 'supportedBrowserBundleIdentifiers'
+          if text.count(old) != 2:
+              raise SystemExit(f'Expected exactly two prefix-marker references, found {text.count(old)}')
           path.write_text(text.replace(old, new))
           PY
+          grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift
           git diff --check
-      - name: Restore workflow and commit CI fix
+      - name: Restore workflow and commit source compatibility fix
         run: |
           git checkout 49490f39137f8f86f491379cb2f8b5a3a61d82e6 -- .github/workflows/apply-octave-integration.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/apply-octave-integration.yml .github/workflows/build_reusable.yml
+          git add .github/workflows/apply-octave-integration.yml boringNotch/MediaControllers/NowPlayingController.swift
           git diff --cached --check
-          git commit -m 'Fix Octave release validation marker'
+          git commit -m 'Restore Octave release validation marker compatibility'
           git push origin "HEAD:${{ inputs.source_ref }}"
