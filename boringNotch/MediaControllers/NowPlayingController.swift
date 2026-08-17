@@ -11,6 +11,7 @@ import Foundation
 
 final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     func updatePlaybackInfo() async {
+        await refreshPlaybackState()
         await fetchFavoriteStateIfSupported()
     }
 
@@ -199,6 +200,38 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         playbackState.volume = clampedLevel
     }
 
+    private func refreshPlaybackState() async {
+        guard
+            let scriptURL = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
+            let frameworkPath = Bundle.main.privateFrameworksPath?.appending("/MediaRemoteAdapter.framework")
+        else {
+            return
+        }
+
+        let payload = await Task.detached(priority: .utility) { () -> NowPlayingPayload? in
+            let process = Process()
+            let output = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+            process.arguments = [scriptURL.path, frameworkPath, "get", "--now"]
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+
+            do {
+                try process.run()
+                let data = output.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0, !data.isEmpty else { return nil }
+                return try JSONDecoder().decode(NowPlayingPayload?.self, from: data)
+            } catch {
+                print("Failed to refresh MediaRemote playback state: \(error)")
+                return nil
+            }
+        }.value
+
+        guard let payload else { return }
+        await handleAdapterUpdate(NowPlayingUpdate(payload: payload, diff: false))
+    }
+
     // MARK: - Setup Methods
     private func setupNowPlayingObserver() async {
         let process = Process()
@@ -350,12 +383,12 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
 }
 
-struct NowPlayingUpdate: Codable {
+struct NowPlayingUpdate: Codable, Sendable {
     let payload: NowPlayingPayload
     let diff: Bool?
 }
 
-struct NowPlayingPayload: Codable {
+struct NowPlayingPayload: Codable, Sendable {
     let title: String?
     let artist: String?
     let album: String?
@@ -466,14 +499,22 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
 
     private let base: NowPlayingController
     private var cancellable: AnyCancellable?
+    private var reconciliationTask: Task<Void, Never>?
     private var detectionGeneration = 0
+    private var lastBaseStateAt = Date.distantPast
 
-    private static let supportedBrowserBundleIdentifiers: Set<String> = [
+    private static let supportedBrowserBundleIdentifierPrefixes = [
         "com.apple.Safari",
         "com.google.Chrome",
         "com.brave.Browser",
         "com.microsoft.edgemac"
     ]
+
+    private static func isSupportedBrowserBundleIdentifier(_ bundleIdentifier: String) -> Bool {
+        supportedBrowserBundleIdentifierPrefixes.contains { prefix in
+            bundleIdentifier == prefix || bundleIdentifier.hasPrefix(prefix + ".")
+        }
+    }
 
     init?() {
         guard let base = NowPlayingController() else { return nil }
@@ -483,13 +524,32 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
             .sink { [weak self] state in
                 Task { @MainActor [weak self] in self?.acceptIfOctaveIsOpen(state) }
             }
+
+        reconciliationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, !Task.isCancelled else { return }
+                let shouldRefresh = await MainActor.run {
+                    Date().timeIntervalSince(self.lastBaseStateAt) > 3
+                }
+                if shouldRefresh {
+                    await self.base.updatePlaybackInfo()
+                }
+            }
+        }
+    }
+
+    deinit {
+        reconciliationTask?.cancel()
+        cancellable?.cancel()
     }
 
     @MainActor
     private func acceptIfOctaveIsOpen(_ state: PlaybackState) {
+        lastBaseStateAt = Date()
         // Never reinterpret a native player (Spotify, Apple Music, etc.) as Octave just
         // because an Octave tab happens to be open in the background.
-        guard Self.supportedBrowserBundleIdentifiers.contains(state.bundleIdentifier) else {
+        guard Self.isSupportedBrowserBundleIdentifier(state.bundleIdentifier) else {
             var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
             idle.isPlaying = false
             playbackState = idle
@@ -554,7 +614,10 @@ private actor OctaveBrowserDetector {
             ("com.brave.Browser", Self.chromiumScript(appName: "Brave Browser")),
             ("com.microsoft.edgemac", Self.chromiumScript(appName: "Microsoft Edge")),
             ("com.apple.Safari", Self.safariScript)
-        ]
+        ].filter { candidate in
+            browserBundleIdentifier == candidate.bundleIdentifier
+                || browserBundleIdentifier.hasPrefix(candidate.bundleIdentifier + ".")
+        }
 
         var found = false
         for candidate in candidates {
