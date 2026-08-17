@@ -13,7 +13,7 @@ jobs:
         with:
           ref: feat/octave-streaming-integration-clean
           fetch-depth: 0
-      - name: Restore source and workflow definitions
+      - name: Restore NowPlaying source
         run: |
           set -euo pipefail
           git show b1def75439bd4767e28699e38666120d5190ebc5:boringNotch/MediaControllers/NowPlayingController.swift > boringNotch/MediaControllers/NowPlayingController.swift
@@ -29,13 +29,11 @@ jobs:
           text = '\n'.join(line.rstrip() for line in text.splitlines()) + '\n'
           path.write_text(text)
           PY
-          git show dce38fc6569e2243a3c10bc046fb79b37380b9b1:.github/workflows/apply-octave-integration.yml > .github/workflows/apply-octave-integration.yml
-          git show 3895f7f06ea89fcaa3e7c0065d943c7ebcd030af:.github/workflows/manual_build.yml > .github/workflows/manual_build.yml
-          git diff --check
+          git diff --check -- boringNotch/MediaControllers/NowPlayingController.swift
           test "$(wc -l < boringNotch/MediaControllers/NowPlayingController.swift | tr -d ' ')" -gt 500
           grep -q 'if let descriptor = try await AppleScriptHelper.execute(candidate.script), descriptor.booleanValue' boringNotch/MediaControllers/NowPlayingController.swift
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch/MediaControllers/NowPlayingController.swift .github/workflows/apply-octave-integration.yml .github/workflows/manual_build.yml
+          git add boringNotch/MediaControllers/NowPlayingController.swift
           git commit -m 'Restore NowPlaying source with descriptor unwrap'
           git push origin HEAD:feat/octave-streaming-integration-clean
