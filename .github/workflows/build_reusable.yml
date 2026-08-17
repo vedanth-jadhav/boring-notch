@@ -51,6 +51,7 @@ jobs:
           grep -q 'LyricRomanizationService.swift in Sources' boringNotch.xcodeproj/project.pbxproj
           grep -q 'BudsAppModel.swift in Sources' boringNotch.xcodeproj/project.pbxproj
           grep -q 'ThermalDetailMonitor.swift in Sources' boringNotch.xcodeproj/project.pbxproj
+          grep -q 'LockScreenLyricLineView.swift in Sources' boringNotch.xcodeproj/project.pbxproj
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -100,6 +101,37 @@ jobs:
           sudo xcode-select -s "$XCODE_PATH"
           xcodebuild -version
           sw_vers
+
+      - name: Swift CLI source validation
+        run: |
+          swift --version
+          xcrun swiftc -parse boringNotch/models/Constants.swift
+          xcrun swiftc -parse boringNotch/components/Onboarding/MusicControllerSelectionView.swift
+          xcrun swiftc -parse boringNotch/MediaControllers/NowPlayingController.swift
+          xcrun swiftc -parse boringNotch/managers/MusicManager.swift
+          xcrun swiftc -parse boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          xcrun swiftc -parse boringNotch/components/Lyrics/LockScreenLyricLineView.swift
+          swift - <<'SWIFT'
+          import Foundation
+
+          let project = try String(contentsOfFile: "boringNotch.xcodeproj/project.pbxproj", encoding: .utf8)
+          let onboarding = try String(contentsOfFile: "boringNotch/components/Onboarding/MusicControllerSelectionView.swift", encoding: .utf8)
+          let requiredProjectEntries = [
+              "LyricRomanizationService.swift in Sources",
+              "BudsAppModel.swift in Sources",
+              "ThermalDetailMonitor.swift in Sources",
+              "LockScreenLyricLineView.swift in Sources"
+          ]
+          for entry in requiredProjectEntries where !project.contains(entry) {
+              fputs("Missing Xcode source membership: \(entry)\n", stderr)
+              exit(1)
+          }
+          guard onboarding.contains("case .octaveStreaming:") else {
+              fputs("Onboarding is missing the Octave Streaming enum case\n", stderr)
+              exit(1)
+          }
+          print("Swift CLI validation passed")
+          SWIFT
 
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ${{ env.PROJECT_NAME }}.xcodeproj

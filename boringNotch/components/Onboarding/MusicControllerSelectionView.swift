@@ -130,6 +130,8 @@ extension MediaControllerType {
             return "Connects directly to the Apple Music app."
         case .youtubeMusic:
             return "Requires a third-party client with API plugin enabled."
+        case .octaveStreaming:
+            return "Detects playback from music.octavestreaming.com in supported browsers with full media controls and Octave-first lyrics."
         }
     }
 }

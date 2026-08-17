@@ -74,5 +74,54 @@ if 'A70000012F30000100000001' not in s:
         raise SystemExit('boringNotch Sources phase anchor not found')
     s = s.replace(phase_anchor, source_entries + phase_anchor, 1)
 
+# Restore the extracted lock-screen lyric line view to the application target. The
+# source file already exists in the repository, but older project files omitted it.
+lyrics_ref = 'ED1000192F20000100000001'
+lyrics_build = 'ED1000092F20000100000001'
+lyrics_group = 'ED1000232F20000100000001'
+lyrics_name = 'LockScreenLyricLineView.swift'
+
+if f'{lyrics_build} /* {lyrics_name} in Sources */' not in s:
+    build_anchor = '\t\tED1000082F20000100000001 /* LyricFeverLyricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000182F20000100000001 /* LyricFeverLyricsService.swift */; };\n'
+    build_entry = f'\t\t{lyrics_build} /* {lyrics_name} in Sources */ = {{isa = PBXBuildFile; fileRef = {lyrics_ref} /* {lyrics_name} */; }};\n'
+    if build_anchor not in s:
+        raise SystemExit('Lock-screen lyric build-file anchor not found')
+    s = s.replace(build_anchor, build_anchor + build_entry, 1)
+
+if f'{lyrics_ref} /* {lyrics_name} */' not in s:
+    ref_anchor = '\t\tED1000182F20000100000001 /* LyricFeverLyricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricFeverLyricsService.swift; sourceTree = "<group>"; };\n'
+    ref_entry = f'\t\t{lyrics_ref} /* {lyrics_name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {lyrics_name}; sourceTree = "<group>"; }};\n'
+    if ref_anchor not in s:
+        raise SystemExit('Lock-screen lyric file-reference anchor not found')
+    s = s.replace(ref_anchor, ref_anchor + ref_entry, 1)
+
+if f'{lyrics_group} /* Lyrics */' not in s:
+    group_entry = (
+        f'\t\t{lyrics_group} /* Lyrics */ = {{\n'
+        '\t\t\tisa = PBXGroup;\n'
+        '\t\t\tchildren = (\n'
+        f'\t\t\t\t{lyrics_ref} /* {lyrics_name} */,\n'
+        '\t\t\t);\n'
+        '\t\t\tpath = Lyrics;\n'
+        '\t\t\tsourceTree = "<group>";\n'
+        '\t\t};\n'
+    )
+    group_anchor = '\t\tED1000202F20000100000001 /* LockScreen */ = {\n'
+    if group_anchor not in s:
+        raise SystemExit('Components Lyrics group anchor not found')
+    s = s.replace(group_anchor, group_entry + group_anchor, 1)
+
+    components_anchor = '\t\t\t\tED1000202F20000100000001 /* LockScreen */,\n'
+    if components_anchor not in s:
+        raise SystemExit('Components child anchor for Lyrics not found')
+    s = s.replace(components_anchor, components_anchor + f'\t\t\t\t{lyrics_group} /* Lyrics */,\n', 1)
+
+source_entry = f'\t\t\t\t{lyrics_build} /* {lyrics_name} in Sources */,\n'
+if source_entry not in s:
+    source_anchor = '\t\t\t\tED1000082F20000100000001 /* LyricFeverLyricsService.swift in Sources */,\n'
+    if source_anchor not in s:
+        raise SystemExit('Lock-screen lyric Sources phase anchor not found')
+    s = s.replace(source_anchor, source_anchor + source_entry, 1)
+
 project.write_text(s)
-print('Restored Buds, romanization, and thermal sources to boringNotch target')
+print('Restored Buds, romanization, thermal, and lock-screen lyric sources to boringNotch target')
