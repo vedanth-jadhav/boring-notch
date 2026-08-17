@@ -465,6 +465,13 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
     private var cancellable: AnyCancellable?
     private var detectionGeneration = 0
 
+    private static let supportedBrowserBundleIdentifiers: Set<String> = [
+        "com.apple.Safari",
+        "com.google.Chrome",
+        "com.brave.Browser",
+        "com.microsoft.edgemac"
+    ]
+
     init?() {
         guard let base = NowPlayingController() else { return nil }
         self.base = base
@@ -474,6 +481,15 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
     }
 
     private func acceptIfOctaveIsOpen(_ state: PlaybackState) {
+        // Never reinterpret a native player (Spotify, Apple Music, etc.) as Octave just
+        // because an Octave tab happens to be open in the background.
+        guard Self.supportedBrowserBundleIdentifiers.contains(state.bundleIdentifier) else {
+            var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
+            idle.isPlaying = false
+            playbackState = idle
+            return
+        }
+
         detectionGeneration &+= 1
         let generation = detectionGeneration
         Task { [weak self] in

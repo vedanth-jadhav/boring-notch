@@ -65,8 +65,28 @@ final class LyricFeverLyricsService {
             return cached
         }
 
-        // Fast parallel fetch across all applicable providers — take the first valid result.
-        let providers = networkLyricProviders(trackID: cleanedTrackID, bundleIdentifier: bundleIdentifier)
+        let isOctave = bundleIdentifier == OctaveStreamingController.syntheticBundleIdentifier
+
+        // When Octave is selected, its own synced-lyrics source gets first refusal. This
+        // preserves provider identity while retaining the generic services as fallback.
+        if isOctave, let octaveLines = await fetchLines(
+            from: octaveProvider,
+            title: cleanedTitle,
+            artist: cleanedArtist,
+            album: cleanedAlbum,
+            trackID: cleanedTrackID,
+            durationMS: durationMS
+        ) {
+            cacheQueue.sync { lyricsCache[cKey] = octaveLines }
+            return octaveLines
+        }
+
+        // Fast parallel fallback across the remaining applicable providers.
+        let providers = networkLyricProviders(
+            trackID: cleanedTrackID,
+            bundleIdentifier: bundleIdentifier,
+            includeOctave: false
+        )
         guard !providers.isEmpty else { return [] }
 
         let result: [BoringLyricLine]? = await withTaskGroup(of: [BoringLyricLine]?.self) { group in
@@ -112,10 +132,39 @@ final class LyricFeverLyricsService {
         return []
     }
 
-    private func networkLyricProviders(trackID: String?, bundleIdentifier: String?) -> [LyricFeverLyricProvider] {
+    private func fetchLines(
+        from provider: LyricFeverLyricProvider,
+        title: String,
+        artist: String,
+        album: String,
+        trackID: String?,
+        durationMS: Int
+    ) async -> [BoringLyricLine]? {
+        do {
+            let lyrics = try await provider.fetchNetworkLyrics(
+                trackName: title,
+                trackID: trackID ?? "",
+                currentlyPlayingArtist: artist,
+                currentAlbumName: album
+            )
+            let lines = lyrics.processed(withSongName: title, duration: durationMS).lyrics
+                .filter { !$0.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .map { BoringLyricLine(startTime: $0.startTimeMS / 1000, words: $0.words) }
+                .sorted { $0.startTime < $1.startTime }
+            return lines.count > 1 ? lines : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func networkLyricProviders(
+        trackID: String?,
+        bundleIdentifier: String?,
+        includeOctave: Bool = true
+    ) -> [LyricFeverLyricProvider] {
         var providers: [LyricFeverLyricProvider] = []
 
-        if bundleIdentifier == OctaveStreamingController.syntheticBundleIdentifier {
+        if includeOctave, bundleIdentifier == OctaveStreamingController.syntheticBundleIdentifier {
             providers.append(octaveProvider)
         }
 
