@@ -50,6 +50,8 @@ jobs:
           fetch-depth: 0
 
       - name: Repair Xcode source membership and validate integration state
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
         run: |
           set -euo pipefail
           python3 Scripts/fix_project_membership.py
@@ -64,9 +66,9 @@ jobs:
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch.xcodeproj/project.pbxproj boringNotch/managers/SystemStatsMonitor.swift
+          git add boringNotch.xcodeproj/project.pbxproj
           git diff --cached --quiet || git commit -m 'Restore missing Xcode source membership'
-          git push origin "HEAD:${{ inputs.head_ref }}" || true
+          git push origin "HEAD:${HEAD_REF}"
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |
@@ -112,16 +114,14 @@ jobs:
           python3 - <<'PY'
           import urllib.parse, urllib.request
           params = urllib.parse.urlencode({'title': "Choosin' Texas", 'artist': 'Ella Langley'})
-          try:
-              req = urllib.request.Request(
-                  f'https://music.octavestreaming.com/api/lyrics?{params}',
-                  headers={'Accept':'application/json','User-Agent':'boringNotch-ci'}
-              )
-              with urllib.request.urlopen(req, timeout=10) as r:
-                  print('OCTAVE_LYRICS_STATUS', r.status)
-                  print('OCTAVE_LYRICS_BODY', r.read(1000).decode('utf-8','replace').replace('\n',' '))
-          except Exception as exc:
-              print('OCTAVE_LYRICS_PROBE', repr(exc))
+          req = urllib.request.Request(
+              f'https://music.octavestreaming.com/api/lyrics?{params}',
+              headers={'Accept':'application/json','User-Agent':'boringNotch-ci'}
+          )
+          with urllib.request.urlopen(req, timeout=10) as response:
+              if response.status != 200:
+                  raise SystemExit(f'Unexpected Octave lyrics status: {response.status}')
+              print('OCTAVE_LYRICS_STATUS', response.status)
           PY
 
       - name: Resolve Swift packages
@@ -133,7 +133,7 @@ jobs:
           PBXPROJ="${PROJECT_NAME}.xcodeproj/project.pbxproj"
           VERSION="${VERSION_INPUT}"
           if [[ -z "${BUILD_NUMBER_INPUT}" ]]; then
-            BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+            BUILD_NUMBER="$GITHUB_RUN_ID"
           else
             BUILD_NUMBER="${BUILD_NUMBER_INPUT}"
           fi
@@ -143,18 +143,20 @@ jobs:
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER}/g" "$PBXPROJ"
 
       - name: Commit version changes
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "${PROJECT_NAME}.xcodeproj/project.pbxproj"
           if [[ -n "${VERSION_INPUT}" ]]; then
-            COMMIT_MSG="Set version to v${VERSION_INPUT} (build ${BUILD_NUMBER_INPUT:-$GITHUB_RUN_NUMBER})"
+            COMMIT_MSG="Set version to v${VERSION_INPUT} (build ${BUILD_NUMBER_INPUT:-$GITHUB_RUN_ID})"
           else
-            COMMIT_MSG="Set build number to ${BUILD_NUMBER_INPUT:-$GITHUB_RUN_NUMBER}"
+            COMMIT_MSG="Set build number to ${BUILD_NUMBER_INPUT:-$GITHUB_RUN_ID}"
           fi
           git diff --cached --quiet || git commit -m "$COMMIT_MSG"
-          git push origin "HEAD:${{ inputs.head_ref }}" || true
+          git push origin "HEAD:${HEAD_REF}"
 
       - name: Install Apple certificate when configured
         if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' && env.P12_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.DEVELOPMENT_TEAM != '' }}
@@ -166,7 +168,8 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
-          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KC"
           security list-keychain -d user -s "$KC"
 
       - name: Build signed archive when signing is configured
@@ -222,7 +225,7 @@ jobs:
           echo "Architectures: $ARCHS"
           grep -q 'arm64' <<<"$ARCHS"
           grep -q 'x86_64' <<<"$ARCHS"
-          /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "https://TheBoredTeam.github.io/boring.notch/appcast.xml"
           /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" >/dev/null
 
       - name: Create DMG
