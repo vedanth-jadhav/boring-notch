@@ -154,6 +154,180 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         reply(currentBatteryTemperatureCelsius().map(NSNumber.init(value:)))
     }
 
+    // MARK: - Self Update
+
+    @objc func prepareUpdateInstallation(
+        fromDMGPath dmgPath: String,
+        currentAppPath: String,
+        hostPID: Int32,
+        with reply: @escaping (Bool) -> Void
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                try Self.stageUpdateAndLaunchInstaller(
+                    dmgPath: dmgPath,
+                    currentAppPath: currentAppPath,
+                    hostPID: hostPID
+                )
+                reply(true)
+            } catch {
+                NSLog("Boring Notch update staging failed: %@", error.localizedDescription)
+                reply(false)
+            }
+        }
+    }
+
+    private static func stageUpdateAndLaunchInstaller(
+        dmgPath: String,
+        currentAppPath: String,
+        hostPID: Int32
+    ) throws {
+        let fileManager = FileManager.default
+        let dmgURL = URL(fileURLWithPath: dmgPath).standardizedFileURL
+        let currentAppURL = URL(fileURLWithPath: currentAppPath).standardizedFileURL
+
+        guard dmgURL.pathExtension.lowercased() == "dmg", fileManager.fileExists(atPath: dmgURL.path) else {
+            throw UpdateStagingError.invalidDMG
+        }
+        guard currentAppURL.pathExtension.lowercased() == "app", fileManager.fileExists(atPath: currentAppURL.path) else {
+            throw UpdateStagingError.invalidCurrentApp
+        }
+        guard fileManager.isWritableFile(atPath: currentAppURL.deletingLastPathComponent().path) else {
+            throw UpdateStagingError.currentAppLocationNotWritable
+        }
+
+        let stagingRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("boring-notch-update-\(UUID().uuidString)", isDirectory: true)
+        let mountPoint = stagingRoot.appendingPathComponent("mount", isDirectory: true)
+        let stagedApp = stagingRoot.appendingPathComponent("boringNotch.app", isDirectory: true)
+        try fileManager.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+
+        var mounted = false
+        defer {
+            if mounted {
+                try? runProcess("/usr/bin/hdiutil", arguments: ["detach", mountPoint.path, "-force"])
+            }
+        }
+
+        try runProcess(
+            "/usr/bin/hdiutil",
+            arguments: ["attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint.path, dmgURL.path]
+        )
+        mounted = true
+
+        let mountedItems = try fileManager.contentsOfDirectory(
+            at: mountPoint,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        guard let sourceApp = mountedItems.first(where: { $0.pathExtension.lowercased() == "app" }) else {
+            throw UpdateStagingError.missingAppInDMG
+        }
+
+        try runProcess("/usr/bin/ditto", arguments: [sourceApp.path, stagedApp.path])
+
+        guard let currentBundleIdentifier = Bundle(url: currentAppURL)?.bundleIdentifier,
+              let stagedBundleIdentifier = Bundle(url: stagedApp)?.bundleIdentifier,
+              currentBundleIdentifier == stagedBundleIdentifier else {
+            throw UpdateStagingError.bundleIdentifierMismatch
+        }
+
+        try runProcess("/usr/bin/hdiutil", arguments: ["detach", mountPoint.path, "-force"])
+        mounted = false
+
+        let installerScript = stagingRoot.appendingPathComponent("install-update.sh")
+        let script = """
+        #!/bin/sh
+        set -u
+        pid="$1"
+        current="$2"
+        staged="$3"
+        staging_root="$4"
+        backup="${current}.boringnotch-backup"
+
+        while /bin/kill -0 "$pid" >/dev/null 2>&1; do
+            /bin/sleep 0.20
+        done
+
+        /bin/rm -rf "$backup"
+        if [ -e "$current" ]; then
+            /bin/mv "$current" "$backup" || exit 1
+        fi
+
+        if /usr/bin/ditto "$staged" "$current"; then
+            /usr/bin/open "$current" >/dev/null 2>&1 || true
+            /bin/rm -rf "$backup" "$staging_root"
+            exit 0
+        fi
+
+        /bin/rm -rf "$current"
+        if [ -e "$backup" ]; then
+            /bin/mv "$backup" "$current" || true
+            /usr/bin/open "$current" >/dev/null 2>&1 || true
+        fi
+        exit 1
+        """
+        try script.write(to: installerScript, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: installerScript.path)
+
+        // Use nohup in a detached shell so the installer survives the XPC connection and host
+        // app terminating. Paths are passed as positional arguments rather than interpolated.
+        let launcher = Process()
+        launcher.executableURL = URL(fileURLWithPath: "/bin/sh")
+        launcher.arguments = [
+            "-c",
+            "/usr/bin/nohup /bin/sh \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" >/dev/null 2>&1 </dev/null &",
+            "boring-notch-updater",
+            installerScript.path,
+            String(hostPID),
+            currentAppURL.path,
+            stagedApp.path,
+            stagingRoot.path
+        ]
+        launcher.standardOutput = FileHandle.nullDevice
+        launcher.standardError = FileHandle.nullDevice
+        try launcher.run()
+        launcher.waitUntilExit()
+        guard launcher.terminationStatus == 0 else {
+            throw UpdateStagingError.installerLaunchFailed
+        }
+    }
+
+    private static func runProcess(_ executable: String, arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw UpdateStagingError.commandFailed(executable)
+        }
+    }
+
+    private enum UpdateStagingError: LocalizedError {
+        case invalidDMG
+        case invalidCurrentApp
+        case currentAppLocationNotWritable
+        case missingAppInDMG
+        case bundleIdentifierMismatch
+        case installerLaunchFailed
+        case commandFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidDMG: return "Invalid update DMG."
+            case .invalidCurrentApp: return "The running app path is invalid."
+            case .currentAppLocationNotWritable: return "The running app location is not writable."
+            case .missingAppInDMG: return "The update DMG does not contain an app bundle."
+            case .bundleIdentifierMismatch: return "The update bundle identifier does not match the running app."
+            case .installerLaunchFailed: return "Could not launch the detached update installer."
+            case .commandFailed(let command): return "Update staging command failed: \(command)"
+            }
+        }
+    }
+
     // MARK: - Private helpers for DisplayServices / IOKit access
     private func displayServicesGetBrightness(displayID: CGDirectDisplayID, out: inout Float) -> Bool {
         guard let sym = dlsym(DisplayServicesHandle.handle, "DisplayServicesGetBrightness") else { return false }

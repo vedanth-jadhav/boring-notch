@@ -24,24 +24,6 @@ import Foundation
     func currentAverageCPUTemperature(with reply: @escaping (NSNumber?) -> Void)
     func currentHottestCPUTemperature(with reply: @escaping (NSNumber?) -> Void)
     func currentBatteryTemperature(with reply: @escaping (NSNumber?) -> Void)
+    // Stages a verified fork beta DMG and launches a detached installer after the app exits.
+    func prepareUpdateInstallation(fromDMGPath dmgPath: String, currentAppPath: String, hostPID: Int32, with reply: @escaping (Bool) -> Void)
 }
-
-/*
- To use the service from an application or other process, use NSXPCConnection to establish a connection to the service by doing something like this:
-
-     connectionToService = NSXPCConnection(serviceName: "theboringteam.boringnotch.BoringNotchXPCHelper")
-     connectionToService.remoteObjectInterface = NSXPCInterface(with: (any BoringNotchXPCHelperProtocol).self)
-     connectionToService.resume()
-
- Once you have a connection to the service, you can use it like this:
-
-     if let proxy = connectionToService.remoteObjectProxy as? BoringNotchXPCHelperProtocol {
-         proxy.performCalculation(firstNumber: 23, secondNumber: 19) { result in
-             NSLog("Result of calculation is: \(result)")
-         }
-     }
-
- And, when you are finished with the service, clean up the connection like this:
-
-     connectionToService.invalidate()
-*/

@@ -24,4 +24,6 @@ import Foundation
     func currentAverageCPUTemperature(with reply: @escaping (NSNumber?) -> Void)
     func currentHottestCPUTemperature(with reply: @escaping (NSNumber?) -> Void)
     func currentBatteryTemperature(with reply: @escaping (NSNumber?) -> Void)
+    // Stages a verified beta DMG and launches a detached installer that replaces this app after exit.
+    func prepareUpdateInstallation(fromDMGPath dmgPath: String, currentAppPath: String, hostPID: Int32, with reply: @escaping (Bool) -> Void)
 }

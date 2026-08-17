@@ -242,6 +242,31 @@ final class XPCHelperClient: NSObject {
         }
     }
 
+    // MARK: - Self Update
+
+    nonisolated func prepareUpdateInstallation(
+        dmgPath: String,
+        currentAppPath: String,
+        hostPID: Int32
+    ) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.prepareUpdateInstallation(
+                    fromDMGPath: dmgPath,
+                    currentAppPath: currentAppPath,
+                    hostPID: hostPID
+                ) { success in
+                    continuation.resume(returning: success)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - CPU Temperature
 
     nonisolated func currentAverageCPUTemperature() async -> Double? {

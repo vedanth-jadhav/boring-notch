@@ -501,13 +501,17 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
     private var cancellable: AnyCancellable?
     private var reconciliationTask: Task<Void, Never>?
     private var detectionGeneration = 0
-    private var lastBaseStateAt = Date.distantPast
 
     private static let supportedBrowserBundleIdentifiers = [
         "com.apple.Safari",
         "com.google.Chrome",
         "com.brave.Browser",
         "com.microsoft.edgemac"
+    ]
+
+    private static let nativePlayerBundleIdentifiers: Set<String> = [
+        "com.spotify.client",
+        "com.apple.Music"
     ]
 
     private static func isSupportedBrowserBundleIdentifier(_ bundleIdentifier: String) -> Bool {
@@ -525,16 +529,21 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
                 Task { @MainActor [weak self] in self?.acceptIfOctaveIsOpen(state) }
             }
 
+        // MediaRemote push updates are not authoritative for background browser tabs. Brave in
+        // particular may keep emitting stale/no-op events, which defeated the old "only poll
+        // when silent" reconciliation. Keep a cheap 1 Hz snapshot while Octave is selected so
+        // metadata and transport state converge even when the tab is fully backgrounded.
         reconciliationTask = Task { [weak self] in
+            guard let self else { return }
+            await self.base.updatePlaybackInfo()
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                guard let self, !Task.isCancelled else { return }
-                let shouldRefresh = await MainActor.run {
-                    Date().timeIntervalSince(self.lastBaseStateAt) > 3
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
                 }
-                if shouldRefresh {
-                    await self.base.updatePlaybackInfo()
-                }
+                guard !Task.isCancelled else { return }
+                await self.base.updatePlaybackInfo()
             }
         }
     }
@@ -546,36 +555,57 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
 
     @MainActor
     private func acceptIfOctaveIsOpen(_ state: PlaybackState) {
-        lastBaseStateAt = Date()
-        // Never reinterpret a native player (Spotify, Apple Music, etc.) as Octave just
-        // because an Octave tab happens to be open in the background.
-        guard Self.isSupportedBrowserBundleIdentifier(state.bundleIdentifier) else {
-            var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
-            idle.isPlaying = false
-            playbackState = idle
+        // Never reinterpret an explicitly identified native player as Octave merely because an
+        // Octave tab is also open. Browser helper/PWA sessions, however, are deliberately not
+        // rejected here: Chromium can report a helper or incomplete bundle identifier for a
+        // background media session, so URL inspection must get the final say.
+        if Self.nativePlayerBundleIdentifiers.contains(state.bundleIdentifier) {
+            publishIdleState()
             return
         }
 
         detectionGeneration &+= 1
         let generation = detectionGeneration
         Task { [weak self] in
-            let detected = await OctaveBrowserDetector.shared.hasOctaveTab(
-                isPlaying: state.isPlaying,
+            let detection = await OctaveBrowserDetector.shared.detectOctaveTab(
                 browserBundleIdentifier: state.bundleIdentifier
             )
             await MainActor.run {
                 guard let self, generation == self.detectionGeneration else { return }
-                guard detected else {
-                    var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
-                    idle.isPlaying = false
-                    self.playbackState = idle
-                    return
+
+                switch detection {
+                case .present:
+                    var mapped = state
+                    mapped.bundleIdentifier = Self.syntheticBundleIdentifier
+                    self.playbackState = mapped
+
+                case .absent:
+                    self.publishIdleState()
+
+                case .unavailable:
+                    // If macOS has not granted browser automation yet, preserve usable browser
+                    // metadata instead of making Octave disappear. This fallback is deliberately
+                    // limited to a recognized browser family, so native players are never stolen.
+                    if state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              // `.unavailable` means at least one supported browser is running but every
+              // attempted browser automation request failed. Chromium helper/PWA owners
+              // need not use the browser's canonical MediaRemote bundle identifier.
+                        var mapped = state
+                        mapped.bundleIdentifier = Self.syntheticBundleIdentifier
+                        self.playbackState = mapped
+                    } else {
+                        self.publishIdleState()
+                    }
                 }
-                var mapped = state
-                mapped.bundleIdentifier = Self.syntheticBundleIdentifier
-                self.playbackState = mapped
             }
         }
+    }
+
+    @MainActor
+    private func publishIdleState() {
+        var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
+        idle.isPlaying = false
+        playbackState = idle
     }
 
     func setFavorite(_ favorite: Bool) async {}
@@ -593,49 +623,67 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
 }
 
 private actor OctaveBrowserDetector {
-    static let shared = OctaveBrowserDetector()
-    private var cachedResult = false
-    private var cachedAt = Date.distantPast
-    private var lastPlayingState: Bool?
-    private var lastBrowserBundleIdentifier: String?
-    private static let cacheInterval: TimeInterval = 5
+    enum DetectionResult: Sendable {
+        case present
+        case absent
+        case unavailable
+    }
 
-    func hasOctaveTab(isPlaying: Bool, browserBundleIdentifier: String) async -> Bool {
+    static let shared = OctaveBrowserDetector()
+    private var cachedResult: DetectionResult = .absent
+    private var cachedAt = Date.distantPast
+    private var lastBrowserBundleIdentifier: String?
+    private static let cacheInterval: TimeInterval = 0.75
+
+    func detectOctaveTab(browserBundleIdentifier: String) async -> DetectionResult {
         let now = Date()
-        if isPlaying,
-           lastPlayingState == isPlaying,
-           lastBrowserBundleIdentifier == browserBundleIdentifier,
+        if lastBrowserBundleIdentifier == browserBundleIdentifier,
            now.timeIntervalSince(cachedAt) < Self.cacheInterval {
             return cachedResult
         }
 
-        let candidates: [(bundleIdentifier: String, script: String)] = [
+        let allCandidates: [(bundleIdentifier: String, script: String)] = [
             ("com.google.Chrome", Self.chromiumScript(appName: "Google Chrome")),
             ("com.brave.Browser", Self.chromiumScript(appName: "Brave Browser")),
             ("com.microsoft.edgemac", Self.chromiumScript(appName: "Microsoft Edge")),
             ("com.apple.Safari", Self.safariScript)
-        ].filter { candidate in
+        ]
+
+        // Prefer the browser MediaRemote names when it gives us a useful owner. If it reports a
+        // helper/PWA/empty owner, inspect every running supported browser instead of rejecting the
+        // session before URL detection gets a chance.
+        let preferred = allCandidates.filter { candidate in
             browserBundleIdentifier == candidate.bundleIdentifier
                 || browserBundleIdentifier.hasPrefix(candidate.bundleIdentifier + ".")
         }
+        let candidates = preferred.isEmpty ? allCandidates : preferred
 
-        var found = false
+        var attempted = 0
+        var failures = 0
+        var result: DetectionResult = .absent
+
         for candidate in candidates {
             guard !NSRunningApplication.runningApplications(withBundleIdentifier: candidate.bundleIdentifier).isEmpty else { continue }
+            attempted += 1
             do {
                 if let descriptor = try await AppleScriptHelper.execute(candidate.script), descriptor.booleanValue {
-                    found = true
+                    result = .present
                     break
                 }
             } catch {
+                failures += 1
                 print("Octave browser detection AppleScript failed for \(candidate.bundleIdentifier): \(error)")
             }
         }
-        cachedResult = found
+
+        if result != .present, attempted > 0, failures == attempted {
+            result = .unavailable
+        }
+
+        cachedResult = result
         cachedAt = now
-        lastPlayingState = isPlaying
         lastBrowserBundleIdentifier = browserBundleIdentifier
-        return found
+        return result
     }
 
     private static func chromiumScript(appName: String) -> String {
@@ -645,7 +693,7 @@ private actor OctaveBrowserDetector {
                 repeat with w in windows
                     repeat with t in tabs of w
                         try
-                            if (URL of t) starts with \"https://music.octavestreaming.com\" then return true
+                            if (URL of t) contains \"music.octavestreaming.com\" then return true
                         end try
                     end repeat
                 end repeat
@@ -661,7 +709,7 @@ private actor OctaveBrowserDetector {
             repeat with w in windows
                 repeat with t in tabs of w
                     try
-                        if (URL of t) starts with \"https://music.octavestreaming.com\" then return true
+                        if (URL of t) contains \"music.octavestreaming.com\" then return true
                     end try
                 end repeat
             end repeat
