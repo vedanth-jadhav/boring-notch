@@ -29,7 +29,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-26
     permissions:
       contents: write
     env:
@@ -44,6 +44,21 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply and verify Octave integration
+        if: ${{ hashFiles('Scripts/apply_octave_integration.py') != '' }}
+        run: |
+          python3 Scripts/apply_octave_integration.py
+          grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
+          grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
+          grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          git diff --cached --quiet || git commit -m 'Integrate Octave streaming provider'
+          git push origin "HEAD:${{ inputs.head_ref }}"
 
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ${{ env.PROJECT_NAME }}.xcodeproj
