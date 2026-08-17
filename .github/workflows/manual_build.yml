@@ -16,7 +16,7 @@ jobs:
       - name: Restore source and workflow definitions
         run: |
           set -euo pipefail
-          git show ecb644ed2f3eef4600712a0ab068faaf3ee84853:boringNotch/MediaControllers/NowPlayingController.swift > boringNotch/MediaControllers/NowPlayingController.swift
+          git show b1def75439bd4767e28699e38666120d5190ebc5:boringNotch/MediaControllers/NowPlayingController.swift > boringNotch/MediaControllers/NowPlayingController.swift
           python3 - <<'PY'
           from pathlib import Path
           path = Path('boringNotch/MediaControllers/NowPlayingController.swift')
