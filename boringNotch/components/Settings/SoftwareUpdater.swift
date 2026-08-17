@@ -8,6 +8,14 @@
 import SwiftUI
 import Sparkle
 
+/// The fork publishes prereleases on Sparkle's `beta` channel. Sparkle only
+/// considers the default channel unless the updater delegate explicitly opts in.
+final class BoringNotchUpdaterDelegate: NSObject, SPUUpdaterDelegate {
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        ["beta"]
+    }
+}
+
 final class CheckForUpdatesViewModel: ObservableObject {
     @Published var canCheckForUpdates = false
 
@@ -53,7 +61,7 @@ struct UpdaterSettingsView: View {
                     updater.automaticallyChecksForUpdates = newValue
                 }
             
-            Toggle("Automatically download updates", isOn: $automaticallyDownloadsUpdates)
+            Toggle("Automatically download and install updates", isOn: $automaticallyDownloadsUpdates)
                 .disabled(!automaticallyChecksForUpdates)
                 .onChange(of: automaticallyDownloadsUpdates) { _, newValue in
                     updater.automaticallyDownloadsUpdates = newValue

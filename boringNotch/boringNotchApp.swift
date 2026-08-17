@@ -18,11 +18,23 @@ struct DynamicNotchApp: App {
     @Default(.menubarIcon) var showMenuBarIcon
     @Environment(\.openWindow) var openWindow
 
+    let updaterDelegate: BoringNotchUpdaterDelegate
     let updaterController: SPUStandardUpdaterController
 
     init() {
+        let updaterDelegate = BoringNotchUpdaterDelegate()
+        self.updaterDelegate = updaterDelegate
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+            startingUpdater: true, updaterDelegate: updaterDelegate, userDriverDelegate: nil)
+
+        // Migrate installs that inherited the upstream fork's disabled auto-download default.
+        // Do this once so later user choices in Settings remain respected.
+        let updaterDefaultsMigrationKey = "BoringNotchForkUpdaterDefaultsV1"
+        if !UserDefaults.standard.bool(forKey: updaterDefaultsMigrationKey) {
+            updaterController.updater.automaticallyChecksForUpdates = true
+            updaterController.updater.automaticallyDownloadsUpdates = true
+            UserDefaults.standard.set(true, forKey: updaterDefaultsMigrationKey)
+        }
 
         // Initialize the settings window controller with the updater controller
         SettingsWindowController.shared.setUpdaterController(updaterController)

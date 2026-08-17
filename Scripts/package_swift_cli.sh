@@ -117,8 +117,11 @@ if [[ ! -x "$HELPER_BINARY" ]]; then
   exit 1
 fi
 
-MARKETING_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ROOT/boringNotch/Info.plist" 2>/dev/null || echo "1.0")
-BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$ROOT/boringNotch/Info.plist" 2>/dev/null || echo "1")
+PBXPROJ="$ROOT/boringNotch.xcodeproj/project.pbxproj"
+MARKETING_VERSION="${MARKETING_VERSION:-$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' "$PBXPROJ" | head -1)}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([^;]*\);.*/\1/p' "$PBXPROJ" | head -1)}"
+[[ -n "$MARKETING_VERSION" ]] || { echo "ERROR: unable to resolve MARKETING_VERSION from $PBXPROJ" >&2; exit 1; }
+[[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || { echo "ERROR: invalid CURRENT_PROJECT_VERSION '$BUILD_NUMBER'" >&2; exit 1; }
 
 rm -rf "$APP"
 mkdir -p \
@@ -166,10 +169,18 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <true/>
   <key>SUEnableInstallerLauncherService</key>
   <true/>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>
+  <key>SUAutomaticallyUpdate</key>
+  <true/>
+  <key>SUAllowsAutomaticUpdates</key>
+  <true/>
+  <key>SUScheduledCheckInterval</key>
+  <integer>3600</integer>
   <key>SUFeedURL</key>
-  <string>https://TheBoredTeam.github.io/boring.notch/appcast.xml</string>
+  <string>https://github.com/vedanth-jadhav/boring-notch/releases/download/beta/appcast.xml</string>
   <key>SUPublicEDKey</key>
-  <string>B1Y47t8C/v8ImurYA+9arEsuCrpxwJSviekiflMElbI=</string>
+  <string>TSol7IeX5WPhq/ubD0i6+6MFpZmJwRqgOBQ39fWa1nU=</string>
   <key>UTImportedTypeDeclarations</key>
   <array>
     <dict/>

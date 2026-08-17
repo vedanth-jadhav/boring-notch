@@ -16,11 +16,15 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUAutomaticallyUpdate</key>
-	<false/>
+	<true/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
 	<key>SUFeedURL</key>
-	<string>https://TheBoredTeam.github.io/boring.notch/appcast.xml</string>
+	<string>https://github.com/vedanth-jadhav/boring-notch/releases/download/beta/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>B1Y47t8C/v8ImurYA+9arEsuCrpxwJSviekiflMElbI=</string>
+	<string>TSol7IeX5WPhq/ubD0i6+6MFpZmJwRqgOBQ39fWa1nU=</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict/>
