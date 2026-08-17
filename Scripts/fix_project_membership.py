@@ -37,11 +37,9 @@ if 'A70000012F30000100000001' not in s:
     )
     s = s.replace('/* End PBXFileReference section */', ref_entries + '/* End PBXFileReference section */', 1)
 
-    # Three new logical groups match the existing repository layout.
     groups = '''\t\tA70200012F30000100000001 /* Buds */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\tA70000022F30000100000001 /* ANCWireMapping.swift */,\n\t\t\t\tA70000032F30000100000001 /* BudsAppModel.swift */,\n\t\t\t\tA70000042F30000100000001 /* BudsClassicBluetoothMonitor.swift */,\n\t\t\t\tA70000052F30000100000001 /* BudsClient.swift */,\n\t\t\t\tA70000062F30000100000001 /* BudsModels.swift */,\n\t\t\t\tA70000072F30000100000001 /* BudsUtils.swift */,\n\t\t\t\tA70000082F30000100000001 /* OPOProtocol.swift */,\n\t\t\t);\n\t\t\tpath = Buds;\n\t\t\tsourceTree = "<group>";\n\t\t};\n\t\tA70200022F30000100000001 /* Buds */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\tA70000092F30000100000001 /* BudsNotchView.swift */,\n\t\t\t);\n\t\t\tpath = Buds;\n\t\t\tsourceTree = "<group>";\n\t\t};\n\t\tA70200032F30000100000001 /* services */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\tA700000A2F30000100000001 /* LyricRomanizationService.swift */,\n\t\t\t);\n\t\t\tpath = services;\n\t\t\tsourceTree = "<group>";\n\t\t};\n'''
     s = s.replace('/* End PBXGroup section */', groups + '/* End PBXGroup section */', 1)
 
-    # Existing managers group: real thermal monitor plus Buds manager subtree.
     manager_anchor = '\t\t\t\tED0000182F10000100000001 /* SystemStatsMonitor.swift */,\n'
     s = s.replace(
         manager_anchor,
@@ -49,7 +47,6 @@ if 'A70000012F30000100000001' not in s:
         1,
     )
 
-    # Existing components group: Buds view subtree.
     components_anchor = '\t\t\t\tED00001A2F10000100000001 /* System */,\n'
     s = s.replace(
         components_anchor,
@@ -57,7 +54,6 @@ if 'A70000012F30000100000001' not in s:
         1,
     )
 
-    # Root application group: services subtree.
     root_anchor = '\t\t\t\t147163B52C5D804B0068B555 /* managers */,\n'
     s = s.replace(
         root_anchor,
@@ -68,7 +64,6 @@ if 'A70000012F30000100000001' not in s:
     source_entries = ''.join(
         f'\t\t\t\t{build} /* {name} in Sources */,\n' for _, build, name in files
     )
-    # Insert into the boringNotch Sources phase, immediately before an existing known source.
     phase_anchor = '\t\t\t\t1471639A2C5D35FF0068B555 /* MusicManager.swift in Sources */,\n'
     if phase_anchor not in s:
         raise SystemExit('boringNotch Sources phase anchor not found')
@@ -88,7 +83,9 @@ if f'{lyrics_build} /* {lyrics_name} in Sources */' not in s:
         raise SystemExit('Lock-screen lyric build-file anchor not found')
     s = s.replace(build_anchor, build_anchor + build_entry, 1)
 
-if f'{lyrics_ref} /* {lyrics_name} */' not in s:
+# Check for the declaration itself, not any incidental reference to the ID from a
+# build-file/group entry. The old loose check could leave a dangling PBXBuildFile.
+if f'{lyrics_ref} /* {lyrics_name} */ = {{isa = PBXFileReference;' not in s:
     ref_anchor = '\t\tED1000182F20000100000001 /* LyricFeverLyricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricFeverLyricsService.swift; sourceTree = "<group>"; };\n'
     ref_entry = f'\t\t{lyrics_ref} /* {lyrics_name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {lyrics_name}; sourceTree = "<group>"; }};\n'
     if ref_anchor not in s:
