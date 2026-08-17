@@ -20,31 +20,19 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
           path = Path('boringNotch/MediaControllers/NowPlayingController.swift')
           text = path.read_text()
-          old = '''                    if Self.isSupportedBrowserBundleIdentifier(state.bundleIdentifier),
-                       state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        var mapped = state
-                        mapped.bundleIdentifier = Self.syntheticBundleIdentifier
-                        self.playbackState = mapped
-                    } else {
-                        self.publishIdleState()
-                    }'''
-          new = '''                    if state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        // `.unavailable` is only returned when at least one supported browser is
-                        // running and every attempted browser automation request failed. Chromium
-                        // helper/PWA MediaRemote owners are often not the browser's canonical
-                        // bundle identifier, so do not throw away otherwise valid media metadata.
-                        var mapped = state
-                        mapped.bundleIdentifier = Self.syntheticBundleIdentifier
-                        self.playbackState = mapped
-                    } else {
-                        self.publishIdleState()
-                    }'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected one fallback block, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
+          pattern = r'''if Self\.isSupportedBrowserBundleIdentifier\(state\.bundleIdentifier\),\s*state\.isPlaying \|\| !state\.title\.trimmingCharacters\(in: \.whitespacesAndNewlines\)\.isEmpty \{'''
+          replacement = '''if state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        // `.unavailable` means at least one supported browser is running but every
+                        // attempted browser automation request failed. Chromium helper/PWA owners
+                        // need not use the browser's canonical MediaRemote bundle identifier.'''
+          text, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one fallback guard, replaced {count}')
+          path.write_text(text)
           PY
           git diff --check
       - name: Restore workflow and commit source fix
