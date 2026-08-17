@@ -6,11 +6,11 @@ on:
       source_ref:
         description: "Branch or commit to release"
         required: false
-        default: "feat/octave-streaming-integration-clean"
+        default: "main"
       marketing_version:
         description: "Display version"
         required: false
-        default: "2.7.4"
+        default: "2.7.6"
 
 permissions:
   contents: write
