@@ -93,19 +93,15 @@ final class LyricFeverLyricsService {
             for provider in providers {
                 group.addTask {
                     do {
-                        let lyrics = try await provider.fetchNetworkLyrics(
-                            trackName: cleanedTitle,
-                            trackID: cleanedTrackID ?? "",
-                            currentlyPlayingArtist: cleanedArtist,
-                            currentAlbumName: cleanedAlbum
+                        try Task.checkCancellation()
+                        return await self.fetchLines(
+                            from: provider,
+                            title: cleanedTitle,
+                            artist: cleanedArtist,
+                            album: cleanedAlbum,
+                            trackID: cleanedTrackID,
+                            durationMS: durationMS
                         )
-                        let processed = lyrics.processed(withSongName: cleanedTitle, duration: durationMS)
-                        let lines = processed.lyrics
-                            .filter { !$0.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                            .map { BoringLyricLine(startTime: $0.startTimeMS / 1000, words: $0.words) }
-                            .sorted { $0.startTime < $1.startTime }
-
-                        return lines.count > 1 ? lines : nil
                     } catch is CancellationError {
                         return nil
                     } catch {
@@ -319,12 +315,16 @@ private final class LyricFeverOctaveLyricProvider: LyricFeverLyricProvider {
            let array = (dictionary["lines"] ?? (dictionary["data"] as? [String: Any])?["lines"]) as? [[String: Any]] {
             let parsed = array.compactMap { item -> LyricFeverLyricLine? in
                 let text = (item["words"] ?? item["text"] ?? item["line"]) as? String
-                let rawTime = item["startTimeMs"] ?? item["startTime"] ?? item["time"]
-                guard let text, let rawTime else { return nil }
-                let milliseconds: Double
-                if let n = rawTime as? NSNumber { milliseconds = n.doubleValue > 1000 ? n.doubleValue : n.doubleValue * 1000 }
-                else if let s = rawTime as? String, let n = Double(s) { milliseconds = n > 1000 ? n : n * 1000 }
+                let selectedTime: (key: String, value: Any)? = ["startTimeMs", "startTime", "time"]
+                    .compactMap { key in item[key].map { (key, $0) } }
+                    .first
+                guard let text, let selectedTime else { return nil }
+                let numericValue: Double
+                if let number = selectedTime.value as? NSNumber { numericValue = number.doubleValue }
+                else if let string = selectedTime.value as? String, let number = Double(string) { numericValue = number }
                 else { return nil }
+                guard numericValue.isFinite, numericValue >= 0 else { return nil }
+                let milliseconds = selectedTime.key == "startTimeMs" ? numericValue : numericValue * 1000
                 return LyricFeverLyricLine(startTime: milliseconds, words: text)
             }
             if parsed.count > 1 { return parsed }

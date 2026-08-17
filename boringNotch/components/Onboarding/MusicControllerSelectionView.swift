@@ -131,7 +131,7 @@ extension MediaControllerType {
         case .youtubeMusic:
             return "Requires a third-party client with API plugin enabled."
         case .octaveStreaming:
-            return "Detects playback from music.octavestreaming.com in supported browsers with full media controls and Octave-first lyrics."
+            return "Detects playback from music.octavestreaming.com in supported browsers after you grant browser Automation permission, with Octave-first lyrics."
         }
     }
 }

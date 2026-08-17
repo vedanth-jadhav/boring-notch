@@ -33,6 +33,8 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         return bundleID == "com.apple.Music"
     }
 
+    var requiresExplicitPolling: Bool { true }
+
     func setFavorite(_ favorite: Bool) async {
         let bundleID = playbackState.bundleIdentifier
         
@@ -460,6 +462,7 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
     var playbackStatePublisher: AnyPublisher<PlaybackState, Never> { $playbackState.eraseToAnyPublisher() }
     var supportsVolumeControl: Bool { false }
     var supportsFavorite: Bool { false }
+    var requiresExplicitPolling: Bool { true }
 
     private let base: NowPlayingController
     private var cancellable: AnyCancellable?
@@ -477,9 +480,12 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
         self.base = base
         cancellable = base.playbackStatePublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in self?.acceptIfOctaveIsOpen(state) }
+            .sink { [weak self] state in
+                Task { @MainActor [weak self] in self?.acceptIfOctaveIsOpen(state) }
+            }
     }
 
+    @MainActor
     private func acceptIfOctaveIsOpen(_ state: PlaybackState) {
         // Never reinterpret a native player (Spotify, Apple Music, etc.) as Octave just
         // because an Octave tab happens to be open in the background.
@@ -493,9 +499,12 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
         detectionGeneration &+= 1
         let generation = detectionGeneration
         Task { [weak self] in
-            let detected = await OctaveBrowserDetector.shared.hasOctaveTab()
-            guard let self, generation == self.detectionGeneration else { return }
+            let detected = await OctaveBrowserDetector.shared.hasOctaveTab(
+                isPlaying: state.isPlaying,
+                browserBundleIdentifier: state.bundleIdentifier
+            )
             await MainActor.run {
+                guard let self, generation == self.detectionGeneration else { return }
                 guard detected else {
                     var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
                     idle.isPlaying = false
@@ -527,26 +536,42 @@ private actor OctaveBrowserDetector {
     static let shared = OctaveBrowserDetector()
     private var cachedResult = false
     private var cachedAt = Date.distantPast
+    private var lastPlayingState: Bool?
+    private var lastBrowserBundleIdentifier: String?
+    private static let cacheInterval: TimeInterval = 5
 
-    func hasOctaveTab() async -> Bool {
-        if Date().timeIntervalSince(cachedAt) < 0.75 { return cachedResult }
+    func hasOctaveTab(isPlaying: Bool, browserBundleIdentifier: String) async -> Bool {
+        let now = Date()
+        if isPlaying,
+           lastPlayingState == isPlaying,
+           lastBrowserBundleIdentifier == browserBundleIdentifier,
+           now.timeIntervalSince(cachedAt) < Self.cacheInterval {
+            return cachedResult
+        }
 
-        let scripts = [
-            Self.chromiumScript(appName: "Google Chrome"),
-            Self.chromiumScript(appName: "Brave Browser"),
-            Self.chromiumScript(appName: "Microsoft Edge"),
-            Self.safariScript
+        let candidates: [(bundleIdentifier: String, script: String)] = [
+            ("com.google.Chrome", Self.chromiumScript(appName: "Google Chrome")),
+            ("com.brave.Browser", Self.chromiumScript(appName: "Brave Browser")),
+            ("com.microsoft.edgemac", Self.chromiumScript(appName: "Microsoft Edge")),
+            ("com.apple.Safari", Self.safariScript)
         ]
 
         var found = false
-        for script in scripts {
-            if let descriptor = try? await AppleScriptHelper.execute(script), descriptor.booleanValue {
-                found = true
-                break
+        for candidate in candidates {
+            guard !NSRunningApplication.runningApplications(withBundleIdentifier: candidate.bundleIdentifier).isEmpty else { continue }
+            do {
+                if try await AppleScriptHelper.execute(candidate.script).booleanValue {
+                    found = true
+                    break
+                }
+            } catch {
+                print("Octave browser detection AppleScript failed for \(candidate.bundleIdentifier): \(error)")
             }
         }
         cachedResult = found
-        cachedAt = Date()
+        cachedAt = now
+        lastPlayingState = isPlaying
+        lastBrowserBundleIdentifier = browserBundleIdentifier
         return found
     }
 
