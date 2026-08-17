@@ -120,5 +120,18 @@ if source_entry not in s:
         raise SystemExit('Lock-screen lyric Sources phase anchor not found')
     s = s.replace(source_anchor, source_anchor + source_entry, 1)
 
+# The Octave controller is observed and mutated on the main queue/main actor. Combine's
+# receive(on:) guarantee is runtime-only, so Swift 6 cannot prove the reference captured by
+# the asynchronous tab detector is safe. Declare that narrow controller Sendable explicitly
+# rather than carrying a Swift-6-error warning in an otherwise clean build.
+now_playing = Path('boringNotch/MediaControllers/NowPlayingController.swift')
+now_playing_source = now_playing.read_text()
+octave_decl = 'final class OctaveStreamingController: ObservableObject, MediaControllerProtocol {'
+octave_sendable_decl = 'final class OctaveStreamingController: ObservableObject, MediaControllerProtocol, @unchecked Sendable {'
+if octave_decl in now_playing_source:
+    now_playing.write_text(now_playing_source.replace(octave_decl, octave_sendable_decl, 1))
+elif octave_sendable_decl not in now_playing_source:
+    raise SystemExit('OctaveStreamingController declaration not found')
+
 project.write_text(s)
 print('Restored Buds, romanization, thermal, and lock-screen lyric sources to boringNotch target')
