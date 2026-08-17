@@ -1,0 +1,249 @@
+name: "Publish Boring Notch Beta"
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Branch or commit to release"
+        required: false
+        default: "feat/octave-streaming-integration-clean"
+      marketing_version:
+        description: "Display version"
+        required: false
+        default: "2.7.4"
+
+permissions:
+  contents: write
+
+env:
+  PROJECT_NAME: boringNotch
+  XCODE_VERSION: "26.6"
+  BETA_TAG: beta
+  BETA_DMG_NAME: "Boring Notch Beta.dmg"
+
+jobs:
+  publish-beta:
+    runs-on: macos-26
+    env:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.PRIVATE_SPARKLE_KEY }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      DEVELOPMENT_TEAM: ${{ vars.DEVELOPMENT_TEAM_ID }}
+      MARKETING_VERSION: ${{ inputs.marketing_version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+
+      - name: Require signed Sparkle release key
+        run: |
+          set -euo pipefail
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "::error::PRIVATE_SPARKLE_KEY is required so beta auto-updates remain cryptographically signed."
+            exit 1
+          fi
+
+      - name: Repair project and select Xcode 26.6
+        run: |
+          set -euo pipefail
+          python3 Scripts/fix_project_membership.py
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcodebuild -version
+          sw_vers
+          xcrun --show-sdk-version
+          swift --version
+          xcrun swiftc -parse boringNotch/models/Constants.swift
+          xcrun swiftc -parse boringNotch/components/Onboarding/MusicControllerSelectionView.swift
+          xcrun swiftc -parse boringNotch/MediaControllers/NowPlayingController.swift
+          xcrun swiftc -parse boringNotch/managers/MusicManager.swift
+          xcrun swiftc -parse boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          xcrun swiftc -parse boringNotch/components/Lyrics/LockScreenLyricLineView.swift
+          git diff --check
+
+      - name: Set beta version
+        run: |
+          set -euo pipefail
+          PBXPROJ="${PROJECT_NAME}.xcodeproj/project.pbxproj"
+          BUILD_NUMBER=$((2704000 + GITHUB_RUN_NUMBER))
+          echo "BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
+          sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = ${MARKETING_VERSION}/g" "$PBXPROJ"
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER}/g" "$PBXPROJ"
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project "${PROJECT_NAME}.xcodeproj"
+
+      - name: Install Apple certificate when configured
+        run: |
+          set -euo pipefail
+          if [[ -z "$BUILD_CERTIFICATE_BASE64" || -z "$P12_PASSWORD" || -z "$KEYCHAIN_PASSWORD" || -z "$DEVELOPMENT_TEAM" ]]; then
+            echo "Apple development signing is not configured; creating an unsigned beta app. Sparkle archive signing is still mandatory."
+            echo "APPLE_SIGNING=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "APPLE_SIGNING=true" >> "$GITHUB_ENV"
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KC="$RUNNER_TEMP/app-signing.keychain-db"
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security list-keychain -d user -s "$KC"
+
+      - name: Build beta app
+        run: |
+          set -euo pipefail
+          rm -rf Release
+          mkdir -p Release
+          if [[ "${APPLE_SIGNING:-false}" == "true" ]]; then
+            xcodebuild clean archive \
+              -project "${PROJECT_NAME}.xcodeproj" \
+              -scheme "$PROJECT_NAME" \
+              -configuration Release \
+              -archivePath "$RUNNER_TEMP/${PROJECT_NAME}.xcarchive" \
+              -destination "generic/platform=macOS" \
+              DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+              CODE_SIGN_IDENTITY="Apple Development" \
+              ONLY_ACTIVE_ARCH=NO \
+              -allowProvisioningUpdates
+            cat > "$RUNNER_TEMP/export_options.plist" <<PLIST
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0"><dict>
+              <key>method</key><string>development</string>
+              <key>signingStyle</key><string>automatic</string>
+              <key>teamID</key><string>${DEVELOPMENT_TEAM}</string>
+            </dict></plist>
+            PLIST
+            xcodebuild -exportArchive \
+              -archivePath "$RUNNER_TEMP/${PROJECT_NAME}.xcarchive" \
+              -exportPath Release \
+              -exportOptionsPlist "$RUNNER_TEMP/export_options.plist"
+          else
+            xcodebuild \
+              -project "${PROJECT_NAME}.xcodeproj" \
+              -scheme "$PROJECT_NAME" \
+              -configuration Release \
+              -destination 'platform=macOS' \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              CODE_SIGNING_ALLOWED=NO \
+              ONLY_ACTIVE_ARCH=NO \
+              build | tee "$RUNNER_TEMP/xcodebuild-beta.log"
+            cp -R "$RUNNER_TEMP/DerivedData/Build/Products/Release/${PROJECT_NAME}.app" Release/
+          fi
+
+      - name: Verify beta app
+        run: |
+          set -euo pipefail
+          APP="Release/${PROJECT_NAME}.app"
+          BIN="$APP/Contents/MacOS/${PROJECT_NAME}"
+          test -d "$APP"
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "Architectures: $ARCHS"
+          grep -q 'arm64' <<<"$ARCHS"
+          grep -q 'x86_64' <<<"$ARCHS"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$MARKETING_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" = "$BUILD_NUMBER"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml"
+          /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" >/dev/null
+
+      - name: Create Boring Notch Beta DMG
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/dmg-venv"
+          source "$RUNNER_TEMP/dmg-venv/bin/activate"
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --require-hashes -r Configuration/dmg/requirements.txt
+          chmod +x Configuration/dmg/create_dmg.sh
+          ./Configuration/dmg/create_dmg.sh \
+            "Release/${PROJECT_NAME}.app" \
+            "Release/${BETA_DMG_NAME}" \
+            "Boring Notch Beta"
+          shasum -a 256 "Release/${BETA_DMG_NAME}" | tee "Release/${BETA_DMG_NAME}.sha256"
+
+      - name: Build Sparkle appcast tool
+        run: |
+          set -euo pipefail
+          METADATA="${PROJECT_NAME}.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+          IFS=$'\t' read -r VERSION REVISION <<< "$(python3 - "$METADATA" <<'PY'
+          import json, sys
+          from pathlib import Path
+          data = json.loads(Path(sys.argv[1]).read_text())
+          pin = next(p for p in data['pins'] if p['identity'] == 'sparkle')
+          print(f"{pin['state']['version']}\t{pin['state']['revision']}")
+          PY
+          )"
+          SRC="$RUNNER_TEMP/Sparkle"
+          DERIVED="$RUNNER_TEMP/sparkle-derived"
+          REPO_URL="https://github.com/sparkle-project/Sparkle"
+          TAG=""
+          for CANDIDATE in "$VERSION" "v$VERSION"; do
+            if git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$CANDIDATE" >/dev/null; then TAG="$CANDIDATE"; break; fi
+          done
+          test -n "$TAG"
+          git clone --depth 1 --branch "$TAG" --single-branch "$REPO_URL" "$SRC"
+          test "$(git -C "$SRC" rev-parse HEAD)" = "$REVISION"
+          xcodebuild -project "$SRC/Sparkle.xcodeproj" \
+            -scheme generate_appcast \
+            -configuration Release \
+            -derivedDataPath "$DERIVED" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          install -m 0755 "$DERIVED/Build/Products/Release/generate_appcast" "$RUNNER_TEMP/generate_appcast"
+
+      - name: Generate signed beta appcast
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/feed"
+          cp "Release/${BETA_DMG_NAME}" "$RUNNER_TEMP/feed/${BETA_DMG_NAME}"
+          cat > "$RUNNER_TEMP/feed/Boring Notch Beta.html" <<HTML
+          <h1>Boring Notch Beta ${MARKETING_VERSION}</h1>
+          <p>Octave Streaming integration, browser-scoped media detection, seek/control fixes, Octave-first lyrics with romanisation, performance hardening, and macOS 26.5 validation.</p>
+          HTML
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/generate_appcast" \
+            --ed-key-file - \
+            --link "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${BETA_TAG}" \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/" \
+            --embed-release-notes \
+            -o "Release/appcast.xml" \
+            "$RUNNER_TEMP/feed"
+          grep -q 'sparkle:edSignature' Release/appcast.xml
+          grep -q 'Boring%20Notch%20Beta.dmg\|Boring Notch Beta.dmg' Release/appcast.xml
+          grep -q "$BUILD_NUMBER" Release/appcast.xml
+
+      - name: Publish mutable beta GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release delete "$BETA_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create "$BETA_TAG" \
+            "Release/${BETA_DMG_NAME}" \
+            "Release/${BETA_DMG_NAME}.sha256" \
+            "Release/appcast.xml" \
+            --target "$GITHUB_SHA" \
+            --title "Boring Notch Beta" \
+            --notes "Beta build ${MARKETING_VERSION} (${BUILD_NUMBER}) with Octave Streaming support and macOS 26.5 validation." \
+            --prerelease
+
+      - name: Verify published beta assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "$BETA_TAG" --json tagName,name,isPrerelease,url,assets
+          curl -fL --retry 4 --retry-delay 3 \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" \
+            -o "$RUNNER_TEMP/published-appcast.xml"
+          grep -q 'sparkle:edSignature' "$RUNNER_TEMP/published-appcast.xml"
+
+      - name: Upload beta artifacts to workflow run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Boring Notch Beta
+          path: |
+            Release/Boring Notch Beta.dmg
+            Release/Boring Notch Beta.dmg.sha256
+            Release/appcast.xml

@@ -14,7 +14,7 @@ on:
       xcode_version:
         required: false
         type: string
-        default: "16.4"
+        default: "26.6"
       code_sign_identity:
         required: false
         type: string
@@ -34,15 +34,24 @@ jobs:
       contents: write
     env:
       PROJECT_NAME: boringNotch
+      EXPORT_METHOD: development
+      VERSION_INPUT: ${{ inputs.version }}
+      BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
+      DEVELOPMENT_TEAM: ${{ vars.DEVELOPMENT_TEAM_ID }}
+      CODE_SIGN_IDENTITY: ${{ inputs.code_sign_identity }}
       XCODE_VERSION: ${{ inputs.xcode_version }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.head_ref }}
           fetch-depth: 0
 
-      - name: Apply project membership repair and validate source state
+      - name: Repair Xcode source membership and validate integration state
         run: |
+          set -euo pipefail
           python3 Scripts/fix_project_membership.py
           grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
           grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
@@ -57,41 +66,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add boringNotch.xcodeproj/project.pbxproj boringNotch/managers/SystemStatsMonitor.swift
           git diff --cached --quiet || git commit -m 'Restore missing Xcode source membership'
-          git push origin "HEAD:${{ inputs.head_ref }}"
-
-      - name: Probe Octave lyric implementation
-        run: |
-          python3 - <<'PY'
-          import re, urllib.parse, urllib.request
-          base = 'https://music.octavestreaming.com'
-          params = urllib.parse.urlencode({'title': "Choosin' Texas", 'artist': 'Ella Langley'})
-          try:
-              req = urllib.request.Request(f'{base}/api/lyrics?{params}', headers={'Accept':'application/json','User-Agent':'boringNotch-ci'})
-              with urllib.request.urlopen(req, timeout=10) as r:
-                  print('OCTAVE_LYRICS_STATUS', r.status)
-                  print('OCTAVE_LYRICS_BODY', r.read(1000).decode('utf-8','replace').replace('\n',' '))
-          except Exception as exc:
-              print('OCTAVE_LYRICS_PROBE_ERROR', repr(exc))
-          try:
-              html = urllib.request.urlopen(base+'/', timeout=10).read().decode('utf-8','replace')
-              scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)', html)
-              print('OCTAVE_SCRIPT_COUNT', len(scripts))
-              for src in scripts:
-                  asset = urllib.parse.urljoin(base+'/', src)
-                  try: js = urllib.request.urlopen(asset, timeout=10).read().decode('utf-8','replace')
-                  except Exception: continue
-                  low = js.lower()
-                  for token in ('lyrics','lrclib','musixmatch'):
-                      p = low.find(token)
-                      if p >= 0:
-                          print('OCTAVE_JS_HINT', token, asset, js[max(0,p-160):p+500].replace('\n',' ')[:800])
-                          break
-          except Exception as exc:
-              print('OCTAVE_JS_INSPECTION_ERROR', repr(exc))
-          PY
+          git push origin "HEAD:${{ inputs.head_ref }}" || true
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |
+          set -euo pipefail
           XCODE_PATH="/Applications/Xcode_${XCODE_VERSION}.app"
           if [[ ! -d "$XCODE_PATH" ]]; then
             echo "::error::Xcode ${XCODE_VERSION} not found at ${XCODE_PATH}"
@@ -101,9 +80,11 @@ jobs:
           sudo xcode-select -s "$XCODE_PATH"
           xcodebuild -version
           sw_vers
+          xcrun --show-sdk-version
 
       - name: Swift CLI source validation
         run: |
+          set -euo pipefail
           swift --version
           xcrun swiftc -parse boringNotch/models/Constants.swift
           xcrun swiftc -parse boringNotch/components/Onboarding/MusicControllerSelectionView.swift
@@ -113,16 +94,9 @@ jobs:
           xcrun swiftc -parse boringNotch/components/Lyrics/LockScreenLyricLineView.swift
           swift - <<'SWIFT'
           import Foundation
-
           let project = try String(contentsOfFile: "boringNotch.xcodeproj/project.pbxproj", encoding: .utf8)
           let onboarding = try String(contentsOfFile: "boringNotch/components/Onboarding/MusicControllerSelectionView.swift", encoding: .utf8)
-          let requiredProjectEntries = [
-              "LyricRomanizationService.swift in Sources",
-              "BudsAppModel.swift in Sources",
-              "ThermalDetailMonitor.swift in Sources",
-              "LockScreenLyricLineView.swift in Sources"
-          ]
-          for entry in requiredProjectEntries where !project.contains(entry) {
+          for entry in ["LyricRomanizationService.swift in Sources", "BudsAppModel.swift in Sources", "ThermalDetailMonitor.swift in Sources", "LockScreenLyricLineView.swift in Sources"] where !project.contains(entry) {
               fputs("Missing Xcode source membership: \(entry)\n", stderr)
               exit(1)
           }
@@ -133,14 +107,146 @@ jobs:
           print("Swift CLI validation passed")
           SWIFT
 
+      - name: Probe Octave endpoint
+        run: |
+          python3 - <<'PY'
+          import urllib.parse, urllib.request
+          params = urllib.parse.urlencode({'title': "Choosin' Texas", 'artist': 'Ella Langley'})
+          try:
+              req = urllib.request.Request(
+                  f'https://music.octavestreaming.com/api/lyrics?{params}',
+                  headers={'Accept':'application/json','User-Agent':'boringNotch-ci'}
+              )
+              with urllib.request.urlopen(req, timeout=10) as r:
+                  print('OCTAVE_LYRICS_STATUS', r.status)
+                  print('OCTAVE_LYRICS_BODY', r.read(1000).decode('utf-8','replace').replace('\n',' '))
+          except Exception as exc:
+              print('OCTAVE_LYRICS_PROBE', repr(exc))
+          PY
+
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project ${{ env.PROJECT_NAME }}.xcodeproj
 
-      - name: Compile universal macOS app without signing
+      - name: Set version and build number
         run: |
-          set -o pipefail
-          xcodebuild -project ${{ env.PROJECT_NAME }}.xcodeproj -scheme ${{ env.PROJECT_NAME }} -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO build | tee "$RUNNER_TEMP/xcodebuild.log"
+          set -euo pipefail
+          PBXPROJ="${PROJECT_NAME}.xcodeproj/project.pbxproj"
+          VERSION="${VERSION_INPUT}"
+          if [[ -z "${BUILD_NUMBER_INPUT}" ]]; then
+            BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+          else
+            BUILD_NUMBER="${BUILD_NUMBER_INPUT}"
+          fi
+          if [[ -n "$VERSION" ]]; then
+            sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = ${VERSION}/g" "$PBXPROJ"
+          fi
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER}/g" "$PBXPROJ"
 
-      - name: Verify integration warnings
+      - name: Commit version changes
         run: |
-          ! grep -E 'warning:.*(OctaveStreamingController|LyricFeverOctaveLyricProvider|NowPlayingController|ThermalDetailMonitor|LyricRomanizationService|BudsAppModel)' "$RUNNER_TEMP/xcodebuild.log"
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${PROJECT_NAME}.xcodeproj/project.pbxproj"
+          if [[ -n "${VERSION_INPUT}" ]]; then
+            COMMIT_MSG="Set version to v${VERSION_INPUT} (build ${BUILD_NUMBER_INPUT:-$GITHUB_RUN_NUMBER})"
+          else
+            COMMIT_MSG="Set build number to ${BUILD_NUMBER_INPUT:-$GITHUB_RUN_NUMBER}"
+          fi
+          git diff --cached --quiet || git commit -m "$COMMIT_MSG"
+          git push origin "HEAD:${{ inputs.head_ref }}" || true
+
+      - name: Install Apple certificate when configured
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' && env.P12_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.DEVELOPMENT_TEAM != '' }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KC="$RUNNER_TEMP/app-signing.keychain-db"
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security list-keychain -d user -s "$KC"
+
+      - name: Build signed archive when signing is configured
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' && env.P12_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.DEVELOPMENT_TEAM != '' }}
+        run: |
+          set -euo pipefail
+          xcodebuild clean archive \
+            -project "${PROJECT_NAME}.xcodeproj" \
+            -scheme "$PROJECT_NAME" \
+            -archivePath "$RUNNER_TEMP/${PROJECT_NAME}.xcarchive" \
+            -destination "generic/platform=macOS" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
+            ONLY_ACTIVE_ARCH=NO \
+            -allowProvisioningUpdates
+          cat > "$RUNNER_TEMP/export_options.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>${EXPORT_METHOD}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${DEVELOPMENT_TEAM}</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/${PROJECT_NAME}.xcarchive" \
+            -exportPath Release \
+            -exportOptionsPlist "$RUNNER_TEMP/export_options.plist"
+
+      - name: Build universal unsigned app when signing is unavailable
+        if: ${{ !(env.BUILD_CERTIFICATE_BASE64 != '' && env.P12_PASSWORD != '' && env.KEYCHAIN_PASSWORD != '' && env.DEVELOPMENT_TEAM != '') }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${PROJECT_NAME}.xcodeproj" \
+            -scheme "$PROJECT_NAME" \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build | tee "$RUNNER_TEMP/xcodebuild.log"
+          mkdir -p Release
+          cp -R "$RUNNER_TEMP/DerivedData/Build/Products/Release/${PROJECT_NAME}.app" Release/
+
+      - name: Verify universal app and updater configuration
+        run: |
+          set -euo pipefail
+          APP="Release/${PROJECT_NAME}.app"
+          test -d "$APP"
+          BIN="$APP/Contents/MacOS/${PROJECT_NAME}"
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "Architectures: $ARCHS"
+          grep -q 'arm64' <<<"$ARCHS"
+          grep -q 'x86_64' <<<"$ARCHS"
+          /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" >/dev/null
+
+      - name: Create DMG
+        run: |
+          set -euo pipefail
+          VENV_DIR="$RUNNER_TEMP/venv"
+          python3 -m venv "$VENV_DIR"
+          source "$VENV_DIR/bin/activate"
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install --require-hashes -r Configuration/dmg/requirements.txt
+          chmod +x Configuration/dmg/create_dmg.sh
+          ./Configuration/dmg/create_dmg.sh \
+            "Release/${PROJECT_NAME}.app" \
+            "Release/${PROJECT_NAME}.dmg" \
+            "${PROJECT_NAME} ${VERSION_INPUT:-Beta}"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}.dmg
+          path: Release/${{ env.PROJECT_NAME }}.dmg
+
+      - name: Upload app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}.app
+          path: Release/${{ env.PROJECT_NAME }}.app
