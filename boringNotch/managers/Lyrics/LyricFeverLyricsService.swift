@@ -12,6 +12,7 @@ final class LyricFeverLyricsService {
     static let shared = LyricFeverLyricsService()
 
     private let spotifyProvider = LyricFeverSpotifyLyricProvider()
+    private let octaveProvider = LyricFeverOctaveLyricProvider()
     private let lrclibProvider = LyricFeverLRCLIBLyricProvider()
     private let netEaseProvider = LyricFeverNetEaseLyricProvider()
 
@@ -114,6 +115,10 @@ final class LyricFeverLyricsService {
     private func networkLyricProviders(trackID: String?, bundleIdentifier: String?) -> [LyricFeverLyricProvider] {
         var providers: [LyricFeverLyricProvider] = []
 
+        if bundleIdentifier == OctaveStreamingController.syntheticBundleIdentifier {
+            providers.append(octaveProvider)
+        }
+
         if bundleIdentifier == "com.spotify.client",
            let trackID,
            trackID.count == 22,
@@ -207,6 +212,94 @@ private struct LyricFeverLyricLine: Decodable, Hashable {
     init(startTime: TimeInterval, words: String) {
         startTimeMS = startTime
         self.words = words
+    }
+}
+
+private final class LyricFeverOctaveLyricProvider: LyricFeverLyricProvider {
+    let providerName = "Octave Lyric Provider"
+    private let session: URLSession
+
+    init() {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 4
+        config.timeoutIntervalForResource = 6
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        session = URLSession(configuration: config)
+    }
+
+    func fetchNetworkLyrics(
+        trackName: String,
+        trackID: String,
+        currentlyPlayingArtist: String?,
+        currentAlbumName: String?
+    ) async throws -> LyricFeverNetworkFetchReturn {
+        var components = URLComponents(string: "https://music.octavestreaming.com/api/lyrics")!
+        components.queryItems = [
+            URLQueryItem(name: "title", value: trackName),
+            URLQueryItem(name: "artist", value: currentlyPlayingArtist ?? ""),
+            URLQueryItem(name: "album", value: currentAlbumName ?? "")
+        ]
+        guard let url = components.url else { throw URLError(.badURL) }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        try Task.checkCancellation()
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+
+        let lines = try Self.parse(data)
+        return LyricFeverNetworkFetchReturn(lyrics: lines, colorData: nil)
+    }
+
+    private static func parse(_ data: Data) throws -> [LyricFeverLyricLine] {
+        let json = try JSONSerialization.jsonObject(with: data)
+
+        func lrcString(from value: Any) -> String? {
+            if let string = value as? String { return string }
+            guard let dictionary = value as? [String: Any] else { return nil }
+            for key in ["syncedLyrics", "synced_lyrics", "lrc", "lyrics"] {
+                if let found = dictionary[key] as? String { return found }
+            }
+            if let nested = dictionary["data"] { return lrcString(from: nested) }
+            return nil
+        }
+
+        if let dictionary = json as? [String: Any],
+           let array = (dictionary["lines"] ?? (dictionary["data"] as? [String: Any])?["lines"]) as? [[String: Any]] {
+            let parsed = array.compactMap { item -> LyricFeverLyricLine? in
+                let text = (item["words"] ?? item["text"] ?? item["line"]) as? String
+                let rawTime = item["startTimeMs"] ?? item["startTime"] ?? item["time"]
+                guard let text, let rawTime else { return nil }
+                let milliseconds: Double
+                if let n = rawTime as? NSNumber { milliseconds = n.doubleValue > 1000 ? n.doubleValue : n.doubleValue * 1000 }
+                else if let s = rawTime as? String, let n = Double(s) { milliseconds = n > 1000 ? n : n * 1000 }
+                else { return nil }
+                return LyricFeverLyricLine(startTime: milliseconds, words: text)
+            }
+            if parsed.count > 1 { return parsed }
+        }
+
+        guard let lrc = lrcString(from: json) else { return [] }
+        let regex = try NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\](.*)"#)
+        return lrc.split(separator: "\n").compactMap { raw in
+            let line = String(raw)
+            let range = NSRange(line.startIndex..<line.endIndex, in: line)
+            guard let match = regex.firstMatch(in: line, range: range), match.numberOfRanges >= 5,
+                  let minRange = Range(match.range(at: 1), in: line),
+                  let secRange = Range(match.range(at: 2), in: line),
+                  let textRange = Range(match.range(at: 4), in: line),
+                  let minutes = Double(line[minRange]), let seconds = Double(line[secRange]) else { return nil }
+            var fraction = 0.0
+            if match.range(at: 3).location != NSNotFound, let fracRange = Range(match.range(at: 3), in: line) {
+                let digits = String(line[fracRange])
+                fraction = (Double(digits) ?? 0) / pow(10, Double(digits.count))
+            }
+            let text = String(line[textRange]).trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { return nil }
+            return LyricFeverLyricLine(startTime: (minutes * 60 + seconds + fraction) * 1000, words: text)
+        }
     }
 }
 
