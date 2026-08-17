@@ -225,8 +225,13 @@ jobs:
           echo "Architectures: $ARCHS"
           grep -q 'arm64' <<<"$ARCHS"
           grep -q 'x86_64' <<<"$ARCHS"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "https://TheBoredTeam.github.io/boring.notch/appcast.xml"
-          /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" >/dev/null
+          /usr/libexec/PlistBuddy -c 'Print :NSAppleEventsUsageDescription' "$APP/Contents/Info.plist" >/dev/null
+          grep -q 'com.brave.Browser' boringNotch/boringNotch.entitlements
+          grep -q 'com.google.Chrome' boringNotch/boringNotch.entitlements
+          grep -q 'com.apple.Safari' boringNotch/boringNotch.entitlements
+          grep -q 'releases/download/beta/latest.json' boringNotch/components/Settings/SoftwareUpdater.swift
+          grep -q 'prepareUpdateInstallation' boringNotch/XPCHelperClient/BoringNotchXPCHelperProtocol.swift
+          grep -q 'prepareUpdateInstallation' BoringNotchXPCHelper/BoringNotchXPCHelperProtocol.swift
 
       - name: Create DMG
         run: |
