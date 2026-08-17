@@ -1,51 +1,40 @@
-name: Apply Octave and updater root fix
+name: Apply Octave Integration
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Branch or commit to validate"
+        required: false
+        default: "feat/octave-streaming-integration-clean"
 
 permissions:
   contents: write
 
 jobs:
-  apply:
-    runs-on: macos-15
+  apply-and-build:
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.source_ref }}
           fetch-depth: 0
-
-      - name: Reuse staged source patch
-        shell: bash
+      - name: Verify project repair is already committed
+        run: python3 Scripts/fix_project_membership.py
+      - name: Verify patch markers
         run: |
-          set -euo pipefail
-          git show f9e9c82082b132a93dae00f099d2d5f73e3d0433:.github/workflows/apply-octave-integration.yml > "$RUNNER_TEMP/staged.yml"
-          python3 - "$RUNNER_TEMP/staged.yml" <<'PY'
-          from pathlib import Path
-          import sys, textwrap
-          text = Path(sys.argv[1]).read_text()
-          marker = "          python3 <<'PY'\n"
-          start = text.index(marker) + len(marker)
-          end = text.index("\n          PY\n", start)
-          script = textwrap.dedent(text[start:end])
-          exec(compile(script, "staged-source-pass.py", "exec"), {})
-          PY
-
-          # Workflow files are written separately through the GitHub connector because the
-          # Actions token is intentionally not allowed to update workflow definitions.
-          git restore --source=HEAD -- .github/workflows/beta_release.yml .github/workflows/manual_build.yml
-          git diff --check
-          git status --short
-
-      - name: Commit source pass
-        shell: bash
+          grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
+          grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
+          grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          git diff --exit-code -- boringNotch.xcodeproj/project.pbxproj
+      - name: Commit generated integration
         run: |
-          set -euo pipefail
-          git config user.name "spotify-ci"
-          git config user.email "spotify-ci@users.noreply.github.com"
-          git add boringNotch/MediaControllers/NowPlayingController.swift \
-                  boringNotch/Info.plist \
-                  boringNotch/components/Settings/SoftwareUpdater.swift \
-                  boringNotch/boringNotchApp.swift \
-                  Scripts/package_swift_cli.sh
-          git commit -m "fix: make Octave detection and fork updater reliable"
-          git push origin HEAD:fix/octave-updater-runtime
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          git diff --cached --quiet || git commit -m 'Integrate Octave streaming provider'
+          git push origin "HEAD:${{ inputs.source_ref }}"
+      - name: Build with Xcode 27 preview
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.0.app/Contents/Developer
+          xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
