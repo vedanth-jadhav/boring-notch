@@ -46,16 +46,19 @@ jobs:
           if [[ -f Scripts/apply_octave_integration.py ]]; then python3 Scripts/apply_octave_integration.py; fi
           if [[ -f Scripts/fix_system_stats_build.py ]]; then python3 Scripts/fix_system_stats_build.py; fi
           if [[ -f Scripts/refine_octave_integration.py ]]; then python3 Scripts/refine_octave_integration.py; fi
+          if [[ -f Scripts/fix_project_membership.py ]]; then python3 Scripts/fix_project_membership.py; fi
           grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
           grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
           grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift
           grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          grep -q 'struct ThermalDetailSnapshot' boringNotch/managers/SystemStatsMonitor.swift
+          grep -q 'LyricRomanizationService.swift in Sources' boringNotch.xcodeproj/project.pbxproj
+          grep -q 'BudsAppModel.swift in Sources' boringNotch.xcodeproj/project.pbxproj
+          grep -q 'ThermalDetailMonitor.swift in Sources' boringNotch.xcodeproj/project.pbxproj
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift boringNotch/managers/SystemStatsMonitor.swift
-          git diff --cached --quiet || git commit -m 'Tighten Octave detection and lyric routing'
+          git add boringNotch.xcodeproj/project.pbxproj boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift boringNotch/managers/SystemStatsMonitor.swift
+          git diff --cached --quiet || git commit -m 'Restore missing sources and finalize Octave integration'
           git push origin "HEAD:${{ inputs.head_ref }}"
 
       - name: Inspect Octave lyric endpoint
@@ -128,4 +131,4 @@ jobs:
 
       - name: Verify no integration warnings
         run: |
-          ! grep -E 'warning:.*(OctaveStreamingController|LyricFeverOctaveLyricProvider|NowPlayingController|ThermalDetailMonitor)' "$RUNNER_TEMP/xcodebuild.log"
+          ! grep -E 'warning:.*(OctaveStreamingController|LyricFeverOctaveLyricProvider|NowPlayingController|ThermalDetailMonitor|LyricRomanizationService|BudsAppModel)' "$RUNNER_TEMP/xcodebuild.log"
