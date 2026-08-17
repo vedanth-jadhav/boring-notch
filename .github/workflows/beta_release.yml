@@ -71,7 +71,7 @@ jobs:
           sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = ${MARKETING_VERSION}/g" "$PBXPROJ"
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER}/g" "$PBXPROJ"
           /usr/libexec/PlistBuddy -c "Set :SUFeedURL https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" boringNotch/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :SUAutomaticallyUpdate false" boringNotch/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :SUAutomaticallyUpdate true" boringNotch/Info.plist
 
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project "${PROJECT_NAME}.xcodeproj"
@@ -149,7 +149,8 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$MARKETING_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" = "$BUILD_NUMBER"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml"
-          /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" >/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" = "TSol7IeX5WPhq/ubD0i6+6MFpZmJwRqgOBQ39fWa1nU="
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$APP/Contents/Info.plist")" = "true"
 
       - name: Create Boring Notch Beta DMG
         run: |
