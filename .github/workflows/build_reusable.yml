@@ -57,7 +57,7 @@ jobs:
           python3 Scripts/fix_project_membership.py
           grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
           grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
-          grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift
+          grep -q 'supportedBrowserBundleIdentifierPrefixes' boringNotch/MediaControllers/NowPlayingController.swift
           grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
           grep -q 'LyricRomanizationService.swift in Sources' boringNotch.xcodeproj/project.pbxproj
           grep -q 'BudsAppModel.swift in Sources' boringNotch.xcodeproj/project.pbxproj
