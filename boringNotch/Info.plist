@@ -16,14 +16,14 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUAutomaticallyUpdate</key>
-	<false/>
+	<true/>
 	<key>SUFeedURL</key>
-	<string>https://TheBoredTeam.github.io/boring.notch/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>B1Y47t8C/v8ImurYA+9arEsuCrpxwJSviekiflMElbI=</string>
+	<string>https://github.com/vedanth-jadhav/boring-notch/releases/download/beta/appcast.xml</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict/>
 	</array>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Boring Notch checks supported browser tabs to identify music playing from Octave Streaming.</string>
 </dict>
 </plist>
