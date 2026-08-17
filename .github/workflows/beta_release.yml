@@ -66,10 +66,12 @@ jobs:
         run: |
           set -euo pipefail
           PBXPROJ="${PROJECT_NAME}.xcodeproj/project.pbxproj"
-          BUILD_NUMBER=$((2704000 + GITHUB_RUN_NUMBER))
+          BUILD_NUMBER="$GITHUB_RUN_ID"
           echo "BUILD_NUMBER=${BUILD_NUMBER}" >> "$GITHUB_ENV"
           sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = ${MARKETING_VERSION}/g" "$PBXPROJ"
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER}/g" "$PBXPROJ"
+          /usr/libexec/PlistBuddy -c "Set :SUFeedURL https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" boringNotch/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :SUAutomaticallyUpdate false" boringNotch/Info.plist
 
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project "${PROJECT_NAME}.xcodeproj"
@@ -109,14 +111,14 @@ jobs:
               ONLY_ACTIVE_ARCH=NO \
               -allowProvisioningUpdates
             cat > "$RUNNER_TEMP/export_options.plist" <<PLIST
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0"><dict>
-              <key>method</key><string>development</string>
-              <key>signingStyle</key><string>automatic</string>
-              <key>teamID</key><string>${DEVELOPMENT_TEAM}</string>
-            </dict></plist>
-            PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>development</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${DEVELOPMENT_TEAM}</string>
+          </dict></plist>
+          PLIST
             xcodebuild -exportArchive \
               -archivePath "$RUNNER_TEMP/${PROJECT_NAME}.xcarchive" \
               -exportPath Release \
@@ -207,6 +209,7 @@ jobs:
             --link "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${BETA_TAG}" \
             --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/" \
             --embed-release-notes \
+            --channel beta \
             -o "Release/appcast.xml" \
             "$RUNNER_TEMP/feed"
           grep -q 'sparkle:edSignature' Release/appcast.xml
@@ -218,15 +221,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release delete "$BETA_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
-          gh release create "$BETA_TAG" \
-            "Release/${BETA_DMG_NAME}" \
-            "Release/${BETA_DMG_NAME}.sha256" \
-            "Release/appcast.xml" \
-            --target "$GITHUB_SHA" \
-            --title "Boring Notch Beta" \
-            --notes "Beta build ${MARKETING_VERSION} (${BUILD_NUMBER}) with Octave Streaming support and macOS 26.5 validation." \
-            --prerelease
+          if gh release view "$BETA_TAG" >/dev/null 2>&1; then
+            gh release upload "$BETA_TAG" \
+              "Release/${BETA_DMG_NAME}" \
+              "Release/${BETA_DMG_NAME}.sha256" \
+              "Release/appcast.xml" \
+              --clobber
+          else
+            gh release create "$BETA_TAG" \
+              "Release/${BETA_DMG_NAME}" \
+              "Release/${BETA_DMG_NAME}.sha256" \
+              "Release/appcast.xml" \
+              --target "$GITHUB_SHA" \
+              --title "Boring Notch Beta" \
+              --notes "Beta build ${MARKETING_VERSION} (${BUILD_NUMBER}) with Octave Streaming support and macOS 26.5 validation." \
+              --prerelease
+          fi
 
       - name: Verify published beta assets
         env:
