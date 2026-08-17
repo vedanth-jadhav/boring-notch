@@ -41,18 +41,19 @@ jobs:
           ref: ${{ inputs.head_ref }}
           fetch-depth: 0
 
-      - name: Apply and verify Octave integration
-        if: ${{ hashFiles('Scripts/apply_octave_integration.py') != '' }}
+      - name: Apply and verify integration repairs
         run: |
-          python3 Scripts/apply_octave_integration.py
+          if [[ -f Scripts/apply_octave_integration.py ]]; then python3 Scripts/apply_octave_integration.py; fi
+          if [[ -f Scripts/fix_system_stats_build.py ]]; then python3 Scripts/fix_system_stats_build.py; fi
           grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
           grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
           grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          grep -q 'struct ThermalDetailSnapshot' boringNotch/managers/SystemStatsMonitor.swift
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --cached --quiet || git commit -m 'Integrate Octave streaming provider'
+          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift boringNotch/managers/SystemStatsMonitor.swift
+          git diff --cached --quiet || git commit -m 'Fix system stats thermal detail build'
           git push origin "HEAD:${{ inputs.head_ref }}"
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
@@ -82,6 +83,6 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             build | tee "$RUNNER_TEMP/xcodebuild.log"
 
-      - name: Verify no Octave integration warnings
+      - name: Verify no integration warnings
         run: |
-          ! grep -E 'warning:.*(OctaveStreamingController|LyricFeverOctaveLyricProvider|NowPlayingController)' "$RUNNER_TEMP/xcodebuild.log"
+          ! grep -E 'warning:.*(OctaveStreamingController|LyricFeverOctaveLyricProvider|NowPlayingController|ThermalDetailMonitor)' "$RUNNER_TEMP/xcodebuild.log"
