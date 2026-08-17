@@ -586,8 +586,10 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
                     // If macOS has not granted browser automation yet, preserve usable browser
                     // metadata instead of making Octave disappear. This fallback is deliberately
                     // limited to a recognized browser family, so native players are never stolen.
-                    if Self.isSupportedBrowserBundleIdentifier(state.bundleIdentifier),
-                       state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              // `.unavailable` means at least one supported browser is running but every
+              // attempted browser automation request failed. Chromium helper/PWA owners
+              // need not use the browser's canonical MediaRemote bundle identifier.
                         var mapped = state
                         mapped.bundleIdentifier = Self.syntheticBundleIdentifier
                         self.playbackState = mapped
