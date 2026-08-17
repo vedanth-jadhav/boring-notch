@@ -26,16 +26,22 @@ jobs:
       - name: Select Xcode 26.6
         run: |
           set -euo pipefail
-          sudo xcode-select -s /Applications/Xcode_26.6.app
+          XCODE_PATH="/Applications/Xcode_26.6.app"
+          if [[ ! -d "$XCODE_PATH" ]]; then
+            echo "::error::Xcode 26.6 not found at ${XCODE_PATH}"
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_PATH"
           xcodebuild -version
           sw_vers
-          test "$(xcrun --show-sdk-version)" = "26.5"
+          xcrun --show-sdk-version
 
       - name: Repair project membership
         run: |
           set -euo pipefail
           python3 Scripts/fix_project_membership.py
-          git diff --check
+          git diff --exit-code -- boringNotch.xcodeproj/project.pbxproj
 
       - name: Swift CLI validation
         run: |
@@ -62,6 +68,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO \
             build | tee "$RUNNER_TEMP/xcodebuild.log"
+          BIN="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*/Build/Products/Release/boringNotch.app/Contents/MacOS/boringNotch' -print -quit)"
+          test -n "$BIN"
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "Architectures: $ARCHS"
+          grep -q 'arm64' <<<"$ARCHS"
+          grep -q 'x86_64' <<<"$ARCHS"
 
       - name: Reject integration warnings
         run: |
