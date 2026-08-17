@@ -1,40 +1,36 @@
-name: Apply Octave Integration
+name: Restore NowPlaying Source
 
 on:
   workflow_dispatch:
-    inputs:
-      source_ref:
-        description: "Branch or commit to validate"
-        required: false
-        default: "feat/octave-streaming-integration-clean"
 
 permissions:
   contents: write
 
 jobs:
-  apply-and-build:
-    runs-on: macos-26
+  restore:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: feat/octave-streaming-integration-clean
           fetch-depth: 0
-      - name: Verify project repair is already committed
-        run: python3 Scripts/fix_project_membership.py
-      - name: Verify patch markers
+      - name: Restore verified source and apply descriptor unwrap
         run: |
-          grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
-          grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
-          grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --exit-code -- boringNotch.xcodeproj/project.pbxproj
-      - name: Commit generated integration
-        run: |
+          set -euo pipefail
+          git show ecb644ed2f3eef4600712a0ab068faaf3ee84853:boringNotch/MediaControllers/NowPlayingController.swift > boringNotch/MediaControllers/NowPlayingController.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('boringNotch/MediaControllers/NowPlayingController.swift')
+          text = path.read_text()
+          old = 'if try await AppleScriptHelper.execute(candidate.script).booleanValue {'
+          new = 'if let descriptor = try await AppleScriptHelper.execute(candidate.script), descriptor.booleanValue {'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one descriptor access anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+          git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --cached --quiet || git commit -m 'Integrate Octave streaming provider'
-          git push origin "HEAD:${{ inputs.source_ref }}"
-      - name: Build with Xcode 27 preview
-        run: |
-          sudo xcode-select -s /Applications/Xcode_27.0.app/Contents/Developer
-          xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+          git add boringNotch/MediaControllers/NowPlayingController.swift
+          git commit -m 'Restore NowPlaying source with descriptor unwrap'
+          git push origin HEAD:feat/octave-streaming-integration-clean
