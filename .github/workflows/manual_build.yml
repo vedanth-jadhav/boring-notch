@@ -71,8 +71,6 @@ jobs:
       - name: Detect Sparkle signing capability
         run: |
           set -euo pipefail
-          # The repository already contains an upstream appcast. Never let that historical
-          # feed masquerade as a freshly signed beta feed merely because it exists on disk.
           rm -rf updater
           if [[ -n "$SPARKLE_PRIVATE_KEY" ]]; then
             echo "SPARKLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
@@ -127,15 +125,32 @@ jobs:
           run-id: ${{ env.ARTIFACT_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare named beta DMG
+      - name: Prepare named beta DMG and update manifest
         run: |
           set -euo pipefail
           test -f "Release/${PROJECT_NAME}.dmg"
           mv "Release/${PROJECT_NAME}.dmg" "Release/${BETA_DMG_NAME}"
-          shasum -a 256 "Release/${BETA_DMG_NAME}" | tee "Release/${BETA_DMG_NAME}.sha256"
+          DMG_SHA="$(shasum -a 256 "Release/${BETA_DMG_NAME}" | awk '{print $1}')"
+          printf '%s  %s\n' "$DMG_SHA" "$BETA_DMG_NAME" | tee "Release/${BETA_DMG_NAME}.sha256"
+          BUILD_VERSION="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([^;]*\);.*/\1/p' "${PROJECT_NAME}.xcodeproj/project.pbxproj" | head -1 | tr -d '[:space:]')"
+          [[ "$BUILD_VERSION" =~ ^[0-9]+$ ]] || { echo "::error::Invalid build version: $BUILD_VERSION"; exit 1; }
+          python3 - "$VERSION" "$BUILD_VERSION" "$DMG_SHA" "Release/latest.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          version, build, sha256, output = sys.argv[1:]
+          manifest = {
+              "version": version,
+              "build": build,
+              "dmg_url": "https://github.com/vedanth-jadhav/boring-notch/releases/download/beta/Boring.Notch.Beta.dmg",
+              "sha256": sha256,
+          }
+          Path(output).write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+          cat "Release/latest.json"
           cat > "Release/Boring Notch Beta.html" <<HTML
           <h1>Boring Notch Beta ${VERSION}</h1>
-          <p>Octave Streaming browser detection and transport controls, seek synchronization hardening, Octave-first lyrics with romanisation, performance improvements, and macOS 26.5 validation.</p>
+          <p>Octave Streaming browser detection and transport controls, fork-owned automatic updates, seek synchronization hardening, Octave-first lyrics with romanisation, performance improvements, and macOS 26.5 validation.</p>
           HTML
 
       - name: Build pinned Sparkle appcast tool
@@ -146,7 +161,6 @@ jobs:
           SPARKLE_SRC="$RUNNER_TEMP/Sparkle"
           SPARKLE_DERIVED="$RUNNER_TEMP/sparkle-derived"
           SPARKLE_REPO_URL="https://github.com/sparkle-project/Sparkle"
-
           IFS=$'\t' read -r SPARKLE_VERSION SPARKLE_REVISION <<< "$(python3 - "$SPARKLE_METADATA_PATH" <<'PY'
           import json
           import sys
@@ -166,7 +180,6 @@ jobs:
           print(f"{version}\t{revision}")
           PY
           )"
-
           SPARKLE_TAG=""
           for candidate in "$SPARKLE_VERSION" "v$SPARKLE_VERSION"; do
             if git ls-remote --exit-code --tags "$SPARKLE_REPO_URL" "refs/tags/$candidate" >/dev/null; then
@@ -181,14 +194,12 @@ jobs:
             fi
           done
           [[ -n "$SPARKLE_TAG" ]] || { echo "::error::No Sparkle tag for ${SPARKLE_VERSION}"; exit 1; }
-
           git clone --depth 1 --branch "$SPARKLE_TAG" --single-branch "$SPARKLE_REPO_URL" "$SPARKLE_SRC"
           ACTUAL_REVISION="$(git -C "$SPARKLE_SRC" rev-parse HEAD)"
           [[ "$ACTUAL_REVISION" == "$SPARKLE_REVISION" ]] || {
             echo "::error::Sparkle revision mismatch: ${ACTUAL_REVISION} != ${SPARKLE_REVISION}"
             exit 1
           }
-
           xcodebuild -project "$SPARKLE_SRC/Sparkle.xcodeproj" \
             -scheme generate_appcast \
             -configuration Release \
@@ -220,16 +231,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          assets=("Release/${BETA_DMG_NAME}" "Release/${BETA_DMG_NAME}.sha256")
-          notes="Beta ${VERSION}: Octave Streaming integration, media-control/seek fixes, Octave-first romanised lyrics, performance work, and macOS 26.5 validation."
+          assets=("Release/${BETA_DMG_NAME}" "Release/${BETA_DMG_NAME}.sha256" "Release/latest.json")
+          notes="Beta ${VERSION}: hardened Octave browser detection, fork-owned automatic updates, media-control/seek fixes, Octave-first romanised lyrics, performance work, and macOS 26.5 validation."
           if [[ -f updater/appcast.xml ]]; then
             assets+=(updater/appcast.xml)
             notes+=" Secure Sparkle auto-update feed is included."
           else
-            notes+=" Auto-update code is wired to the beta release channel, but the signed appcast is intentionally not published until the repository owner provisions PRIVATE_SPARKLE_KEY matching the app's SUPublicEDKey."
+            notes+=" Fork-owned auto-update uses the published latest.json manifest and verified DMG checksum. Sparkle appcast publication remains disabled until a fork-owned signing key is provisioned."
           fi
-
           if gh release view "$BETA_TAG" >/dev/null 2>&1; then
+            gh release edit "$BETA_TAG" \
+              --title "Boring Notch Beta ${VERSION}" \
+              --notes "$notes" \
+              --prerelease
             gh release upload "$BETA_TAG" "${assets[@]}" --clobber
           else
             gh release create "$BETA_TAG" \
@@ -249,6 +263,12 @@ jobs:
           echo "$release_json"
           asset_names="$(gh release view "$BETA_TAG" --json assets --jq '.assets[].name')"
           echo "$asset_names" | grep -E '^Boring[ .]Notch[ .]Beta\.dmg$'
+          echo "$asset_names" | grep -Fx 'latest.json'
+          curl -fL --retry 4 --retry-delay 3 \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/latest.json" \
+            -o "$RUNNER_TEMP/published-latest.json"
+          jq -e --arg version "$VERSION" '.version == $version and (.build | test("^[0-9]+$")) and (.sha256 | test("^[0-9a-f]{64}$")) and (.dmg_url | contains("/releases/download/beta/Boring.Notch.Beta.dmg"))' \
+            "$RUNNER_TEMP/published-latest.json" >/dev/null
           if [[ "$SPARKLE_SIGNING_AVAILABLE" == "true" ]]; then
             echo "$asset_names" | grep -Fx 'appcast.xml'
             curl -fL --retry 4 --retry-delay 3 \
