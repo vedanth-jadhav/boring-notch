@@ -97,6 +97,27 @@ jobs:
           name: ${{ env.PROJECT_NAME }}.dmg
           path: Release
 
+      - name: Validate supplied artifact workflow run
+        if: ${{ env.ARTIFACT_RUN_ID != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA="$(git rev-parse HEAD)"
+          RUN_JSON="$(gh run view "$ARTIFACT_RUN_ID" --json workflowName,headSha,conclusion)"
+          SOURCE_WORKFLOW="$(jq -r '.workflowName' <<<"$RUN_JSON")"
+          SOURCE_SHA="$(jq -r '.headSha' <<<"$RUN_JSON")"
+          SOURCE_CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
+          [[ "$SOURCE_WORKFLOW" == "Manual Build" ]] || { echo "::error::Artifact run must come from Manual Build, got: $SOURCE_WORKFLOW"; exit 1; }
+          [[ "$SOURCE_CONCLUSION" == "success" ]] || { echo "::error::Artifact run did not succeed: $SOURCE_CONCLUSION"; exit 1; }
+          [[ "$SOURCE_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Artifact run head SHA $SOURCE_SHA does not match intended HEAD_REF $EXPECTED_SHA"; exit 1; }
+          RUN_LOG="$(gh run view "$ARTIFACT_RUN_ID" --log)"
+          if ! grep -F "Set version to v${VERSION}" <<<"$RUN_LOG" >/dev/null; then
+            PROJECT_VERSION="$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' "${PROJECT_NAME}.xcodeproj/project.pbxproj" | head -1)"
+            [[ "$PROJECT_VERSION" == "$VERSION" ]] || { echo "::error::Requested version ${VERSION} does not match project version ${PROJECT_VERSION}"; exit 1; }
+            grep -F "Set build number to " <<<"$RUN_LOG" >/dev/null || { echo "::error::Artifact run does not record a compatible version/build update"; exit 1; }
+          fi
+
       - name: Download DMG from validated workflow run
         if: ${{ env.ARTIFACT_RUN_ID != '' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
