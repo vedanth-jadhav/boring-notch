@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 project = Path('boringNotch.xcodeproj/project.pbxproj')
 s = project.read_text()
@@ -130,6 +131,9 @@ octave_decl = 'final class OctaveStreamingController: ObservableObject, MediaCon
 octave_sendable_decl = 'final class OctaveStreamingController: ObservableObject, MediaControllerProtocol, @unchecked Sendable {'
 if octave_decl in now_playing_source:
     now_playing.write_text(now_playing_source.replace(octave_decl, octave_sendable_decl, 1))
+    # The reusable workflow commits repair-script changes. Stage this source repair so
+    # the branch itself, not just the transient CI workspace, receives the Swift 6 fix.
+    subprocess.run(['git', 'add', str(now_playing)], check=True)
 elif octave_sendable_decl not in now_playing_source:
     raise SystemExit('OctaveStreamingController declaration not found')
 
