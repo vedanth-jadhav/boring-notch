@@ -57,7 +57,7 @@ jobs:
           python3 Scripts/fix_project_membership.py
           grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
           grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
-          grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift
+          grep -q 'supportedBrowserBundleIdentifierPrefixes' boringNotch/MediaControllers/NowPlayingController.swift
           grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
           grep -q 'LyricRomanizationService.swift in Sources' boringNotch.xcodeproj/project.pbxproj
           grep -q 'BudsAppModel.swift in Sources' boringNotch.xcodeproj/project.pbxproj
@@ -94,6 +94,7 @@ jobs:
           xcrun swiftc -parse boringNotch/managers/MusicManager.swift
           xcrun swiftc -parse boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
           xcrun swiftc -parse boringNotch/components/Lyrics/LockScreenLyricLineView.swift
+          bash -n Scripts/package_swift_cli.sh
           swift - <<'SWIFT'
           import Foundation
           let project = try String(contentsOfFile: "boringNotch.xcodeproj/project.pbxproj", encoding: .utf8)
@@ -225,8 +226,12 @@ jobs:
           echo "Architectures: $ARCHS"
           grep -q 'arm64' <<<"$ARCHS"
           grep -q 'x86_64' <<<"$ARCHS"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "https://TheBoredTeam.github.io/boring.notch/appcast.xml"
-          /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" >/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "https://github.com/vedanth-jadhav/boring-notch/releases/download/beta/appcast.xml"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" = "TSol7IeX5WPhq/ubD0i6+6MFpZmJwRqgOBQ39fWa1nU="
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUEnableAutomaticChecks' "$APP/Contents/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$APP/Contents/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUAllowsAutomaticUpdates' "$APP/Contents/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUScheduledCheckInterval' "$APP/Contents/Info.plist")" = "3600"
 
       - name: Create DMG
         run: |
