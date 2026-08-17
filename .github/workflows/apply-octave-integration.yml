@@ -4,37 +4,39 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "Branch or commit to validate"
-        required: false
-        default: "feat/octave-streaming-integration-clean"
+        description: "Branch or commit to patch"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  apply-and-build:
+  apply-fix:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
-      - name: Verify project repair is already committed
-        run: python3 Scripts/fix_project_membership.py
-      - name: Verify patch markers
+      - name: Update Octave validation marker
         run: |
-          grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
-          grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
-          grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --exit-code -- boringNotch.xcodeproj/project.pbxproj
-      - name: Commit generated integration
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/build_reusable.yml')
+          text = path.read_text()
+          old = "grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift"
+          new = "grep -q 'supportedBrowserBundleIdentifierPrefixes' boringNotch/MediaControllers/NowPlayingController.swift"
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one stale Octave marker, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+          git diff --check
+      - name: Restore workflow and commit CI fix
         run: |
+          git checkout 49490f39137f8f86f491379cb2f8b5a3a61d82e6 -- .github/workflows/apply-octave-integration.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --cached --quiet || git commit -m 'Integrate Octave streaming provider'
+          git add .github/workflows/apply-octave-integration.yml .github/workflows/build_reusable.yml
+          git diff --cached --check
+          git commit -m 'Fix Octave release validation marker'
           git push origin "HEAD:${{ inputs.source_ref }}"
-      - name: Build with Xcode 27 preview
-        run: |
-          sudo xcode-select -s /Applications/Xcode_27.0.app/Contents/Developer
-          xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
