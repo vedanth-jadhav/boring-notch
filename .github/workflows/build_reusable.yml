@@ -45,16 +45,59 @@ jobs:
         run: |
           if [[ -f Scripts/apply_octave_integration.py ]]; then python3 Scripts/apply_octave_integration.py; fi
           if [[ -f Scripts/fix_system_stats_build.py ]]; then python3 Scripts/fix_system_stats_build.py; fi
+          if [[ -f Scripts/refine_octave_integration.py ]]; then python3 Scripts/refine_octave_integration.py; fi
           grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
           grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
+          grep -q 'supportedBrowserBundleIdentifiers' boringNotch/MediaControllers/NowPlayingController.swift
           grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
           grep -q 'struct ThermalDetailSnapshot' boringNotch/managers/SystemStatsMonitor.swift
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift boringNotch/managers/SystemStatsMonitor.swift
-          git diff --cached --quiet || git commit -m 'Fix system stats thermal detail build'
+          git diff --cached --quiet || git commit -m 'Tighten Octave detection and lyric routing'
           git push origin "HEAD:${{ inputs.head_ref }}"
+
+      - name: Inspect Octave lyric endpoint
+        run: |
+          python3 - <<'PY'
+          import re, urllib.parse, urllib.request
+          base = 'https://music.octavestreaming.com'
+          params = urllib.parse.urlencode({'title': "Choosin' Texas", 'artist': 'Ella Langley'})
+          url = f'{base}/api/lyrics?{params}'
+          try:
+              req = urllib.request.Request(url, headers={'Accept': 'application/json', 'User-Agent': 'boringNotch-ci'})
+              with urllib.request.urlopen(req, timeout=10) as response:
+                  body = response.read(1200).decode('utf-8', 'replace')
+                  print('OCTAVE_LYRICS_STATUS', response.status)
+                  print('OCTAVE_LYRICS_BODY', body.replace('\n', ' ')[:1000])
+          except Exception as exc:
+              print('OCTAVE_LYRICS_PROBE_ERROR', repr(exc))
+
+          try:
+              html = urllib.request.urlopen(base + '/', timeout=10).read().decode('utf-8', 'replace')
+              scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)', html)
+              print('OCTAVE_SCRIPT_COUNT', len(scripts))
+              shown = 0
+              for src in scripts:
+                  asset = urllib.parse.urljoin(base + '/', src)
+                  try:
+                      js = urllib.request.urlopen(asset, timeout=10).read().decode('utf-8', 'replace')
+                  except Exception:
+                      continue
+                  lowered = js.lower()
+                  for token in ('lyrics', 'lrclib', 'musixmatch'):
+                      pos = lowered.find(token)
+                      if pos >= 0:
+                          snippet = js[max(0, pos-180):pos+420].replace('\n', ' ')
+                          print('OCTAVE_JS_HINT', asset, snippet[:700])
+                          shown += 1
+                          break
+                  if shown >= 12:
+                      break
+          except Exception as exc:
+              print('OCTAVE_JS_INSPECTION_ERROR', repr(exc))
+          PY
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |
