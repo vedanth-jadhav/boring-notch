@@ -33,9 +33,11 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         return bundleID == "com.apple.Music"
     }
 
+    var requiresExplicitPolling: Bool { true }
+
     func setFavorite(_ favorite: Bool) async {
         let bundleID = playbackState.bundleIdentifier
-        
+
         if bundleID == "com.apple.Music" {
             let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
             if !runningApps.isEmpty {
@@ -49,7 +51,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
                 try? await AppleScriptHelper.executeVoid(script)
             }
         }
-        
+
         // Update the favorite state locally and fetch updated info
         try? await Task.sleep(for: .milliseconds(150))
         await updatePlaybackInfo()
@@ -68,6 +70,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     private var process: Process?
     private var pipeHandler: JSONLinesPipeHandler?
     private var streamTask: Task<Void, Never>?
+    private var pendingSeek: (time: Double, issuedAt: Date)?
 
     // MARK: - Initialization
     init?() {
@@ -83,7 +86,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
                 bundle, "MRMediaRemoteSetShuffleMode" as CFString),
             let MRMediaRemoteSetRepeatModePointer = CFBundleGetFunctionPointerForName(
                 bundle, "MRMediaRemoteSetRepeatMode" as CFString)
-            
+
         else { return nil }
 
         mediaRemoteBundle = bundle
@@ -101,12 +104,12 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
     deinit {
         streamTask?.cancel()
-        
+
         if let pipeHandler = self.pipeHandler {
             Task { await pipeHandler.close()
             }
         }
-        
+
         if let process = self.process {
             if process.isRunning {
                 process.terminate()
@@ -140,32 +143,42 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     func seek(to time: Double) async {
-        MRMediaRemoteSetElapsedTimeFunction(time)
+        let clamped = max(0, min(time, playbackState.duration > 0 ? playbackState.duration : time))
+        pendingSeek = (clamped, Date())
+
+        // Browser MediaSession seek handlers are asynchronous. Optimistically move the
+        // local timeline and reconcile against the next authoritative MediaRemote sample.
+        var updated = playbackState
+        updated.currentTime = clamped
+        updated.lastUpdated = Date()
+        playbackState = updated
+
+        MRMediaRemoteSetElapsedTimeFunction(clamped)
     }
 
     func isActive() -> Bool {
         return true
     }
-    
+
     func toggleShuffle() async {
         // MRMediaRemoteSendCommandFunction(6, nil)
         MRMediaRemoteSetShuffleModeFunction(playbackState.isShuffled ? 1 : 3)
         playbackState.isShuffled.toggle()
     }
-    
+
     func toggleRepeat() async {
         // MRMediaRemoteSendCommandFunction(7, nil)
         let newRepeatMode = (playbackState.repeatMode == .off) ? 3 : (playbackState.repeatMode.rawValue - 1)
         playbackState.repeatMode = RepeatMode(rawValue: newRepeatMode) ?? .off
         MRMediaRemoteSetRepeatModeFunction(newRepeatMode)
     }
-    
+
     func setVolume(_ level: Double) async {
         // MediaRemote framework doesn't provide direct volume control for the active audio session
         // As a workaround, try to control the currently active music app directly
         let clampedLevel = max(0.0, min(1.0, level))
         let volumePercentage = Int(clampedLevel * 100)
-        
+
         let bundleID = playbackState.bundleIdentifier
         if !bundleID.isEmpty {
             if bundleID == "com.apple.Music" {
@@ -182,10 +195,10 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
                 }
             }
         }
-        
+
         playbackState.volume = clampedLevel
     }
-    
+
     // MARK: - Setup Methods
     private func setupNowPlayingObserver() async {
         let process = Process()
@@ -196,13 +209,13 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             assertionFailure("Could not find mediaremote-adapter.pl script or framework path")
             return
         }
-        
+
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
         process.arguments = [scriptURL.path, frameworkPath, "stream"]
-        
+
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
-        
+
         self.process = process
         self.pipeHandler = pipeHandler
 
@@ -219,7 +232,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     // MARK: - Async Stream Processing
     private func processJSONStream() async {
         guard let pipeHandler = self.pipeHandler else { return }
-        
+
         await pipeHandler.readJSONLines(as: NowPlayingUpdate.self) { [weak self] update in
             await self?.handleAdapterUpdate(update)
         }
@@ -231,14 +244,26 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         let diff = update.diff ?? false
 
         var newPlaybackState = PlaybackState(bundleIdentifier: playbackState.bundleIdentifier)
-        
+
         newPlaybackState.title = payload.title ?? (diff ? self.playbackState.title : "")
         newPlaybackState.artist = payload.artist ?? (diff ? self.playbackState.artist : "")
         newPlaybackState.album = payload.album ?? (diff ? self.playbackState.album : "")
         newPlaybackState.duration = payload.duration ?? (diff ? self.playbackState.duration : 0)
-        
+
         if let elapsedTime = payload.elapsedTime {
-            newPlaybackState.currentTime = elapsedTime
+            // A browser commonly emits one stale position sample immediately after a seek.
+            // Keep the requested position briefly so the seek bar cannot snap backwards.
+            if let pendingSeek,
+               Date().timeIntervalSince(pendingSeek.issuedAt) < 1.5,
+               abs(elapsedTime - pendingSeek.time) > 2.0 {
+                newPlaybackState.currentTime = pendingSeek.time
+            } else {
+                newPlaybackState.currentTime = elapsedTime
+                if let pendingSeek,
+                   abs(elapsedTime - pendingSeek.time) <= 2.0 || Date().timeIntervalSince(pendingSeek.issuedAt) >= 1.5 {
+                    self.pendingSeek = nil
+                }
+            }
         } else if diff {
             if payload.playing == false {
                 let timeSinceLastUpdate = Date().timeIntervalSince(self.playbackState.lastUpdated)
@@ -250,7 +275,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             newPlaybackState.currentTime = 0
         }
 
-        
+
         if let shuffleMode = payload.shuffleMode {
             newPlaybackState.isShuffled = shuffleMode != 1
         } else if !diff {
@@ -290,22 +315,22 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             payload.bundleIdentifier ??
             (diff ? self.playbackState.bundleIdentifier : "")
         )
-        
+
         newPlaybackState.volume = payload.volume ?? (diff ? self.playbackState.volume : 0.5)
-        
+
         self.playbackState = newPlaybackState
-        
+
         // Fetch favorite state for supported apps asynchronously
         // await fetchFavoriteStateIfSupported()
     }
-    
+
      private func fetchFavoriteStateIfSupported() async {
          let bundleID = playbackState.bundleIdentifier
-        
+
          if bundleID == "com.apple.Music" {
              let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
              guard !runningApps.isEmpty else { return }
-             
+
              let script = """
              tell application "Music"
                  try
@@ -322,7 +347,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
              }
          }
      }
-    
+
 }
 
 struct NowPlayingUpdate: Codable {
@@ -351,16 +376,16 @@ actor JSONLinesPipeHandler {
     private let pipe: Pipe
     private let fileHandle: FileHandle
     private var buffer = ""
-    
+
     init() {
         self.pipe = Pipe()
         self.fileHandle = pipe.fileHandleForReading
     }
-    
+
     func getPipe() -> Pipe {
         return pipe
     }
-    
+
     func readJSONLines<T: Decodable>(as type: T.Type, onLine: @escaping (T) async -> Void) async {
         do {
             try await self.processLines(as: type) { decodedObject in
@@ -370,19 +395,19 @@ actor JSONLinesPipeHandler {
             print("Error processing JSON stream: \(error)")
         }
     }
-    
+
     private func processLines<T: Decodable>(as type: T.Type, onLine: @escaping (T) async -> Void) async throws {
         while true {
             let data = try await readData()
             guard !data.isEmpty else { break }
-            
+
             if let chunk = String(data: data, encoding: .utf8) {
                 buffer.append(chunk)
-                
+
                 while let range = buffer.range(of: "\n") {
                     let line = String(buffer[..<range.lowerBound])
                     buffer = String(buffer[range.upperBound...])
-                    
+
                     if !line.isEmpty {
                         await processJSONLine(line, as: type, onLine: onLine)
                     }
@@ -390,7 +415,7 @@ actor JSONLinesPipeHandler {
             }
         }
     }
-    
+
     private func processJSONLine<T: Decodable>(_ line: String, as type: T.Type, onLine: @escaping (T) async -> Void) async {
         guard let data = line.data(using: .utf8) else {
             return
@@ -402,10 +427,10 @@ actor JSONLinesPipeHandler {
             // Ignore lines that can't be decoded
         }
     }
-    
+
     private func readData() async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
-            
+
             fileHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 handle.readabilityHandler = nil
@@ -413,7 +438,7 @@ actor JSONLinesPipeHandler {
             }
         }
     }
-    
+
     func close() async {
         do {
             fileHandle.readabilityHandler = nil
@@ -423,4 +448,162 @@ actor JSONLinesPipeHandler {
             print("Error closing pipe handler: \(error)")
         }
     }
+}
+
+
+// MARK: - Octave Streaming web controller
+/// First-class controller for https://music.octavestreaming.com/. Transport remains on
+/// MediaRemote, while browser-tab detection prevents unrelated web media from appearing
+/// when Octave is explicitly selected.
+final class OctaveStreamingController: ObservableObject, MediaControllerProtocol, @unchecked Sendable {
+    static let syntheticBundleIdentifier = "com.boringnotch.octave.web"
+
+    @Published private(set) var playbackState = PlaybackState(bundleIdentifier: syntheticBundleIdentifier)
+    var playbackStatePublisher: AnyPublisher<PlaybackState, Never> { $playbackState.eraseToAnyPublisher() }
+    var supportsVolumeControl: Bool { false }
+    var supportsFavorite: Bool { false }
+    var requiresExplicitPolling: Bool { true }
+
+    private let base: NowPlayingController
+    private var cancellable: AnyCancellable?
+    private var detectionGeneration = 0
+
+    private static let supportedBrowserBundleIdentifiers: Set<String> = [
+        "com.apple.Safari",
+        "com.google.Chrome",
+        "com.brave.Browser",
+        "com.microsoft.edgemac"
+    ]
+
+    init?() {
+        guard let base = NowPlayingController() else { return nil }
+        self.base = base
+        cancellable = base.playbackStatePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                Task { @MainActor [weak self] in self?.acceptIfOctaveIsOpen(state) }
+            }
+    }
+
+    @MainActor
+    private func acceptIfOctaveIsOpen(_ state: PlaybackState) {
+        // Never reinterpret a native player (Spotify, Apple Music, etc.) as Octave just
+        // because an Octave tab happens to be open in the background.
+        guard Self.supportedBrowserBundleIdentifiers.contains(state.bundleIdentifier) else {
+            var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
+            idle.isPlaying = false
+            playbackState = idle
+            return
+        }
+
+        detectionGeneration &+= 1
+        let generation = detectionGeneration
+        Task { [weak self] in
+            let detected = await OctaveBrowserDetector.shared.hasOctaveTab(
+                isPlaying: state.isPlaying,
+                browserBundleIdentifier: state.bundleIdentifier
+            )
+            await MainActor.run {
+                guard let self, generation == self.detectionGeneration else { return }
+                guard detected else {
+                    var idle = PlaybackState(bundleIdentifier: Self.syntheticBundleIdentifier)
+                    idle.isPlaying = false
+                    self.playbackState = idle
+                    return
+                }
+                var mapped = state
+                mapped.bundleIdentifier = Self.syntheticBundleIdentifier
+                self.playbackState = mapped
+            }
+        }
+    }
+
+    func setFavorite(_ favorite: Bool) async {}
+    func play() async { await base.play() }
+    func pause() async { await base.pause() }
+    func seek(to time: Double) async { await base.seek(to: time) }
+    func nextTrack() async { await base.nextTrack() }
+    func previousTrack() async { await base.previousTrack() }
+    func togglePlay() async { await base.togglePlay() }
+    func toggleShuffle() async { await base.toggleShuffle() }
+    func toggleRepeat() async { await base.toggleRepeat() }
+    func setVolume(_ level: Double) async { await base.setVolume(level) }
+    func isActive() -> Bool { true }
+    func updatePlaybackInfo() async { await base.updatePlaybackInfo() }
+}
+
+private actor OctaveBrowserDetector {
+    static let shared = OctaveBrowserDetector()
+    private var cachedResult = false
+    private var cachedAt = Date.distantPast
+    private var lastPlayingState: Bool?
+    private var lastBrowserBundleIdentifier: String?
+    private static let cacheInterval: TimeInterval = 5
+
+    func hasOctaveTab(isPlaying: Bool, browserBundleIdentifier: String) async -> Bool {
+        let now = Date()
+        if isPlaying,
+           lastPlayingState == isPlaying,
+           lastBrowserBundleIdentifier == browserBundleIdentifier,
+           now.timeIntervalSince(cachedAt) < Self.cacheInterval {
+            return cachedResult
+        }
+
+        let candidates: [(bundleIdentifier: String, script: String)] = [
+            ("com.google.Chrome", Self.chromiumScript(appName: "Google Chrome")),
+            ("com.brave.Browser", Self.chromiumScript(appName: "Brave Browser")),
+            ("com.microsoft.edgemac", Self.chromiumScript(appName: "Microsoft Edge")),
+            ("com.apple.Safari", Self.safariScript)
+        ]
+
+        var found = false
+        for candidate in candidates {
+            guard !NSRunningApplication.runningApplications(withBundleIdentifier: candidate.bundleIdentifier).isEmpty else { continue }
+            do {
+                if let descriptor = try await AppleScriptHelper.execute(candidate.script), descriptor.booleanValue {
+                    found = true
+                    break
+                }
+            } catch {
+                print("Octave browser detection AppleScript failed for \(candidate.bundleIdentifier): \(error)")
+            }
+        }
+        cachedResult = found
+        cachedAt = now
+        lastPlayingState = isPlaying
+        lastBrowserBundleIdentifier = browserBundleIdentifier
+        return found
+    }
+
+    private static func chromiumScript(appName: String) -> String {
+        """
+        if application \"\(appName)\" is running then
+            tell application \"\(appName)\"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        try
+                            if (URL of t) starts with \"https://music.octavestreaming.com\" then return true
+                        end try
+                    end repeat
+                end repeat
+            end tell
+        end if
+        return false
+        """
+    }
+
+    private static let safariScript = """
+    if application \"Safari\" is running then
+        tell application \"Safari\"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    try
+                        if (URL of t) starts with \"https://music.octavestreaming.com\" then return true
+                    end try
+                end repeat
+            end repeat
+        end tell
+    end if
+    return false
+    """
 }

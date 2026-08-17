@@ -140,6 +140,7 @@
 		ED1000062F20000100000001 /* LockScreenLyricsTranslationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000162F20000100000001 /* LockScreenLyricsTranslationBridge.swift */; };
 		ED1000072F20000100000001 /* BoringLyricLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000172F20000100000001 /* BoringLyricLine.swift */; };
 		ED1000082F20000100000001 /* LyricFeverLyricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000182F20000100000001 /* LyricFeverLyricsService.swift */; };
+		ED1000092F20000100000001 /* LockScreenLyricLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000192F20000100000001 /* LockScreenLyricLineView.swift */; };
 		B1A78C822C8BA08100BD51B0 /* FullscreenMediaDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A78C812C8BA08100BD51B0 /* FullscreenMediaDetection.swift */; };
 		B1B112912C6A572100093D8F /* EditPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B112902C6A572100093D8F /* EditPanelView.swift */; };
 		B1B112932C6A577E00093D8F /* MouseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B112922C6A577E00093D8F /* MouseTracker.swift */; };
@@ -155,6 +156,16 @@
 		B1F747F92EC7E94000F841DB /* LottieView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F747F82EC7E94000F841DB /* LottieView.swift */; };
 		B1FEB4992C7686630066EBBC /* PanGesture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1FEB4982C7686630066EBBC /* PanGesture.swift */; };
 		F38DE6482D8243E7008B5C6D /* BatteryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */; };
+		A70100012F30000100000001 /* ThermalDetailMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000012F30000100000001 /* ThermalDetailMonitor.swift */; };
+		A70100022F30000100000001 /* ANCWireMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000022F30000100000001 /* ANCWireMapping.swift */; };
+		A70100032F30000100000001 /* BudsAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000032F30000100000001 /* BudsAppModel.swift */; };
+		A70100042F30000100000001 /* BudsClassicBluetoothMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000042F30000100000001 /* BudsClassicBluetoothMonitor.swift */; };
+		A70100052F30000100000001 /* BudsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000052F30000100000001 /* BudsClient.swift */; };
+		A70100062F30000100000001 /* BudsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000062F30000100000001 /* BudsModels.swift */; };
+		A70100072F30000100000001 /* BudsUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000072F30000100000001 /* BudsUtils.swift */; };
+		A70100082F30000100000001 /* OPOProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000082F30000100000001 /* OPOProtocol.swift */; };
+		A70100092F30000100000001 /* BudsNotchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70000092F30000100000001 /* BudsNotchView.swift */; };
+		A701000A2F30000100000001 /* LyricRomanizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A700000A2F30000100000001 /* LyricRomanizationService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -318,6 +329,7 @@
 		ED1000162F20000100000001 /* LockScreenLyricsTranslationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenLyricsTranslationBridge.swift; sourceTree = "<group>"; };
 		ED1000172F20000100000001 /* BoringLyricLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoringLyricLine.swift; sourceTree = "<group>"; };
 		ED1000182F20000100000001 /* LyricFeverLyricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricFeverLyricsService.swift; sourceTree = "<group>"; };
+		ED1000192F20000100000001 /* LockScreenLyricLineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenLyricLineView.swift; sourceTree = "<group>"; };
 		B1A78C812C8BA08100BD51B0 /* FullscreenMediaDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullscreenMediaDetection.swift; sourceTree = "<group>"; };
 		B1B112902C6A572100093D8F /* EditPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPanelView.swift; sourceTree = "<group>"; };
 		B1B112922C6A577E00093D8F /* MouseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseTracker.swift; sourceTree = "<group>"; };
@@ -333,6 +345,16 @@
 		B1F747F82EC7E94000F841DB /* LottieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LottieView.swift; sourceTree = "<group>"; };
 		B1FEB4982C7686630066EBBC /* PanGesture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanGesture.swift; sourceTree = "<group>"; };
 		F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryActivityManager.swift; sourceTree = "<group>"; };
+		A70000012F30000100000001 /* ThermalDetailMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalDetailMonitor.swift; sourceTree = "<group>"; };
+		A70000022F30000100000001 /* ANCWireMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ANCWireMapping.swift; sourceTree = "<group>"; };
+		A70000032F30000100000001 /* BudsAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudsAppModel.swift; sourceTree = "<group>"; };
+		A70000042F30000100000001 /* BudsClassicBluetoothMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudsClassicBluetoothMonitor.swift; sourceTree = "<group>"; };
+		A70000052F30000100000001 /* BudsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudsClient.swift; sourceTree = "<group>"; };
+		A70000062F30000100000001 /* BudsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudsModels.swift; sourceTree = "<group>"; };
+		A70000072F30000100000001 /* BudsUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudsUtils.swift; sourceTree = "<group>"; };
+		A70000082F30000100000001 /* OPOProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPOProtocol.swift; sourceTree = "<group>"; };
+		A70000092F30000100000001 /* BudsNotchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudsNotchView.swift; sourceTree = "<group>"; };
+		A700000A2F30000100000001 /* LyricRomanizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricRomanizationService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -518,7 +540,9 @@
 				149E0B982C737D26006418B1 /* Webcam */,
 				B18654312C6F45AE000B926A /* Live activities */,
 				ED1000202F20000100000001 /* LockScreen */,
+				ED1000232F20000100000001 /* Lyrics */,
 				ED00001A2F10000100000001 /* System */,
+				A70200022F30000100000001 /* Buds */,
 				B18654302C6F4590000B926A /* Settings */,
 				B186542F2C6F455E000B926A /* Notch */,
 				9A0887332C7AFF7E00C160EA /* Tabs */,
@@ -547,11 +571,21 @@
 				59D8C23B2E589FAA00147B33 /* VolumeManager.swift */,
 				ED0000112F10000100000001 /* CPUTemperatureMonitor.swift */,
 				ED0000182F10000100000001 /* SystemStatsMonitor.swift */,
+				A70000012F30000100000001 /* ThermalDetailMonitor.swift */,
+				A70200012F30000100000001 /* Buds */,
 				ED1000122F20000100000001 /* LockScreenMusicWindowManager.swift */,
 				ED1000132F20000100000001 /* CaffeineManager.swift */,
 				ED1000222F20000100000001 /* Lyrics */,
 			);
 			path = managers;
+			sourceTree = "<group>";
+		};
+		ED1000232F20000100000001 /* Lyrics */ = {
+			isa = PBXGroup;
+			children = (
+				ED1000192F20000100000001 /* LockScreenLyricLineView.swift */,
+			);
+			path = Lyrics;
 			sourceTree = "<group>";
 		};
 		ED1000202F20000100000001 /* LockScreen */ = {
@@ -622,6 +656,7 @@
 				14D570BA2C5E98E30011E668 /* enums */,
 				14D570B72C5E98960011E668 /* animations */,
 				147163B52C5D804B0068B555 /* managers */,
+				A70200032F30000100000001 /* services */,
 				1153BD8E2D986B1F00979FB0 /* MediaControllers */,
 				B15063502C63D3F600EBB0E3 /* extensions */,
 				1471639B2C5D362F0068B555 /* components */,
@@ -825,6 +860,36 @@
 			path = Tips;
 			sourceTree = "<group>";
 		};
+		A70200012F30000100000001 /* Buds */ = {
+			isa = PBXGroup;
+			children = (
+				A70000022F30000100000001 /* ANCWireMapping.swift */,
+				A70000032F30000100000001 /* BudsAppModel.swift */,
+				A70000042F30000100000001 /* BudsClassicBluetoothMonitor.swift */,
+				A70000052F30000100000001 /* BudsClient.swift */,
+				A70000062F30000100000001 /* BudsModels.swift */,
+				A70000072F30000100000001 /* BudsUtils.swift */,
+				A70000082F30000100000001 /* OPOProtocol.swift */,
+			);
+			path = Buds;
+			sourceTree = "<group>";
+		};
+		A70200022F30000100000001 /* Buds */ = {
+			isa = PBXGroup;
+			children = (
+				A70000092F30000100000001 /* BudsNotchView.swift */,
+			);
+			path = Buds;
+			sourceTree = "<group>";
+		};
+		A70200032F30000100000001 /* services */ = {
+			isa = PBXGroup;
+			children = (
+				A700000A2F30000100000001 /* LyricRomanizationService.swift */,
+			);
+			path = services;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1021,6 +1086,16 @@
 				5917FD112E57891600E87F1C /* MediaKeyInterceptor.swift in Sources */,
 				14C08BC12C8E03AD000F8AA0 /* NSImage+Extensions.swift in Sources */,
 				149E0B9A2C737D40006418B1 /* WebcamView.swift in Sources */,
+				A70100012F30000100000001 /* ThermalDetailMonitor.swift in Sources */,
+				A70100022F30000100000001 /* ANCWireMapping.swift in Sources */,
+				A70100032F30000100000001 /* BudsAppModel.swift in Sources */,
+				A70100042F30000100000001 /* BudsClassicBluetoothMonitor.swift in Sources */,
+				A70100052F30000100000001 /* BudsClient.swift in Sources */,
+				A70100062F30000100000001 /* BudsModels.swift in Sources */,
+				A70100072F30000100000001 /* BudsUtils.swift in Sources */,
+				A70100082F30000100000001 /* OPOProtocol.swift in Sources */,
+				A70100092F30000100000001 /* BudsNotchView.swift in Sources */,
+				A701000A2F30000100000001 /* LyricRomanizationService.swift in Sources */,
 				1471639A2C5D35FF0068B555 /* MusicManager.swift in Sources */,
 				B1B112932C6A577E00093D8F /* MouseTracker.swift in Sources */,
 				B1C448962C9712C4001F0858 /* ActionBar.swift in Sources */,
@@ -1100,6 +1175,7 @@
 				ED1000062F20000100000001 /* LockScreenLyricsTranslationBridge.swift in Sources */,
 				ED1000072F20000100000001 /* BoringLyricLine.swift in Sources */,
 				ED1000082F20000100000001 /* LyricFeverLyricsService.swift in Sources */,
+				ED1000092F20000100000001 /* LockScreenLyricLineView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1122,14 +1198,14 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 271;
+				CURRENT_PROJECT_VERSION = 272;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BoringNotchXPCHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BoringNotchXPCHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.7.3;
+				MARKETING_VERSION = 2.7.4;
 				PRODUCT_BUNDLE_IDENTIFIER = theboringteam.boringnotch.BoringNotchXPCHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1147,14 +1223,14 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 271;
+				CURRENT_PROJECT_VERSION = 272;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BoringNotchXPCHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BoringNotchXPCHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.7.3;
+				MARKETING_VERSION = 2.7.4;
 				PRODUCT_BUNDLE_IDENTIFIER = theboringteam.boringnotch.BoringNotchXPCHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1301,7 +1377,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 271;
+				CURRENT_PROJECT_VERSION = 272;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
@@ -1328,7 +1404,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.7.3;
+				MARKETING_VERSION = 2.7.4;
 				PRODUCT_BUNDLE_IDENTIFIER = theboringteam.boringnotch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1355,7 +1431,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 271;
+				CURRENT_PROJECT_VERSION = 272;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
@@ -1381,7 +1457,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.7.3;
+				MARKETING_VERSION = 2.7.4;
 				PRODUCT_BUNDLE_IDENTIFIER = theboringteam.boringnotch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

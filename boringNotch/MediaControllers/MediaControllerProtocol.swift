@@ -13,6 +13,7 @@ protocol MediaControllerProtocol: ObservableObject {
     var playbackStatePublisher: AnyPublisher<PlaybackState, Never> { get }
     var supportsVolumeControl: Bool { get }
     var supportsFavorite: Bool { get }
+    var requiresExplicitPolling: Bool { get }
 
     func setFavorite(_ favorite: Bool) async
     func play() async
@@ -33,6 +34,8 @@ protocol MediaControllerProtocol: ObservableObject {
 }
 
 extension MediaControllerProtocol {
+    var requiresExplicitPolling: Bool { false }
+
     /// Default: no peek support.
     func peekNextTrack() async -> (title: String, artist: String, album: String)? { nil }
 }

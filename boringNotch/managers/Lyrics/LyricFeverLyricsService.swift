@@ -12,6 +12,7 @@ final class LyricFeverLyricsService {
     static let shared = LyricFeverLyricsService()
 
     private let spotifyProvider = LyricFeverSpotifyLyricProvider()
+    private let octaveProvider = LyricFeverOctaveLyricProvider()
     private let lrclibProvider = LyricFeverLRCLIBLyricProvider()
     private let netEaseProvider = LyricFeverNetEaseLyricProvider()
 
@@ -64,27 +65,43 @@ final class LyricFeverLyricsService {
             return cached
         }
 
-        // Fast parallel fetch across all applicable providers — take the first valid result.
-        let providers = networkLyricProviders(trackID: cleanedTrackID, bundleIdentifier: bundleIdentifier)
+        let isOctave = bundleIdentifier == OctaveStreamingController.syntheticBundleIdentifier
+
+        // When Octave is selected, its own synced-lyrics source gets first refusal. This
+        // preserves provider identity while retaining the generic services as fallback.
+        if isOctave, let octaveLines = await fetchLines(
+            from: octaveProvider,
+            title: cleanedTitle,
+            artist: cleanedArtist,
+            album: cleanedAlbum,
+            trackID: cleanedTrackID,
+            durationMS: durationMS
+        ) {
+            cacheQueue.sync { lyricsCache[cKey] = octaveLines }
+            return octaveLines
+        }
+
+        // Fast parallel fallback across the remaining applicable providers.
+        let providers = networkLyricProviders(
+            trackID: cleanedTrackID,
+            bundleIdentifier: bundleIdentifier,
+            includeOctave: false
+        )
         guard !providers.isEmpty else { return [] }
 
         let result: [BoringLyricLine]? = await withTaskGroup(of: [BoringLyricLine]?.self) { group in
             for provider in providers {
                 group.addTask {
                     do {
-                        let lyrics = try await provider.fetchNetworkLyrics(
-                            trackName: cleanedTitle,
-                            trackID: cleanedTrackID ?? "",
-                            currentlyPlayingArtist: cleanedArtist,
-                            currentAlbumName: cleanedAlbum
+                        try Task.checkCancellation()
+                        return await self.fetchLines(
+                            from: provider,
+                            title: cleanedTitle,
+                            artist: cleanedArtist,
+                            album: cleanedAlbum,
+                            trackID: cleanedTrackID,
+                            durationMS: durationMS
                         )
-                        let processed = lyrics.processed(withSongName: cleanedTitle, duration: durationMS)
-                        let lines = processed.lyrics
-                            .filter { !$0.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                            .map { BoringLyricLine(startTime: $0.startTimeMS / 1000, words: $0.words) }
-                            .sorted { $0.startTime < $1.startTime }
-
-                        return lines.count > 1 ? lines : nil
                     } catch is CancellationError {
                         return nil
                     } catch {
@@ -111,8 +128,41 @@ final class LyricFeverLyricsService {
         return []
     }
 
-    private func networkLyricProviders(trackID: String?, bundleIdentifier: String?) -> [LyricFeverLyricProvider] {
+    private func fetchLines(
+        from provider: LyricFeverLyricProvider,
+        title: String,
+        artist: String,
+        album: String,
+        trackID: String?,
+        durationMS: Int
+    ) async -> [BoringLyricLine]? {
+        do {
+            let lyrics = try await provider.fetchNetworkLyrics(
+                trackName: title,
+                trackID: trackID ?? "",
+                currentlyPlayingArtist: artist,
+                currentAlbumName: album
+            )
+            let lines = lyrics.processed(withSongName: title, duration: durationMS).lyrics
+                .filter { !$0.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .map { BoringLyricLine(startTime: $0.startTimeMS / 1000, words: $0.words) }
+                .sorted { $0.startTime < $1.startTime }
+            return lines.count > 1 ? lines : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func networkLyricProviders(
+        trackID: String?,
+        bundleIdentifier: String?,
+        includeOctave: Bool = true
+    ) -> [LyricFeverLyricProvider] {
         var providers: [LyricFeverLyricProvider] = []
+
+        if includeOctave, bundleIdentifier == OctaveStreamingController.syntheticBundleIdentifier {
+            providers.append(octaveProvider)
+        }
 
         if bundleIdentifier == "com.spotify.client",
            let trackID,
@@ -207,6 +257,98 @@ private struct LyricFeverLyricLine: Decodable, Hashable {
     init(startTime: TimeInterval, words: String) {
         startTimeMS = startTime
         self.words = words
+    }
+}
+
+private final class LyricFeverOctaveLyricProvider: LyricFeverLyricProvider {
+    let providerName = "Octave Lyric Provider"
+    private let session: URLSession
+
+    init() {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 4
+        config.timeoutIntervalForResource = 6
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        session = URLSession(configuration: config)
+    }
+
+    func fetchNetworkLyrics(
+        trackName: String,
+        trackID: String,
+        currentlyPlayingArtist: String?,
+        currentAlbumName: String?
+    ) async throws -> LyricFeverNetworkFetchReturn {
+        var components = URLComponents(string: "https://music.octavestreaming.com/api/lyrics")!
+        components.queryItems = [
+            URLQueryItem(name: "title", value: trackName),
+            URLQueryItem(name: "artist", value: currentlyPlayingArtist ?? ""),
+            URLQueryItem(name: "album", value: currentAlbumName ?? "")
+        ]
+        guard let url = components.url else { throw URLError(.badURL) }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        try Task.checkCancellation()
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+
+        let lines = try Self.parse(data)
+        return LyricFeverNetworkFetchReturn(lyrics: lines, colorData: nil)
+    }
+
+    private static func parse(_ data: Data) throws -> [LyricFeverLyricLine] {
+        let json = try JSONSerialization.jsonObject(with: data)
+
+        func lrcString(from value: Any) -> String? {
+            if let string = value as? String { return string }
+            guard let dictionary = value as? [String: Any] else { return nil }
+            for key in ["syncedLyrics", "synced_lyrics", "lrc", "lyrics"] {
+                if let found = dictionary[key] as? String { return found }
+            }
+            if let nested = dictionary["data"] { return lrcString(from: nested) }
+            return nil
+        }
+
+        if let dictionary = json as? [String: Any],
+           let array = (dictionary["lines"] ?? (dictionary["data"] as? [String: Any])?["lines"]) as? [[String: Any]] {
+            let parsed = array.compactMap { item -> LyricFeverLyricLine? in
+                let text = (item["words"] ?? item["text"] ?? item["line"]) as? String
+                let selectedTime: (key: String, value: Any)? = ["startTimeMs", "startTime", "time"]
+                    .compactMap { key in item[key].map { (key, $0) } }
+                    .first
+                guard let text, let selectedTime else { return nil }
+                let numericValue: Double
+                if let number = selectedTime.value as? NSNumber { numericValue = number.doubleValue }
+                else if let string = selectedTime.value as? String, let number = Double(string) { numericValue = number }
+                else { return nil }
+                guard numericValue.isFinite, numericValue >= 0 else { return nil }
+                let milliseconds = selectedTime.key == "startTimeMs" ? numericValue : numericValue * 1000
+                return LyricFeverLyricLine(startTime: milliseconds, words: text)
+            }
+            if parsed.count > 1 { return parsed }
+        }
+
+        guard let lrc = lrcString(from: json) else { return [] }
+        let regex = try NSRegularExpression(pattern: #"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\](.*)"#)
+        return lrc.split(separator: "\n").compactMap { raw in
+            let line = String(raw)
+            let range = NSRange(line.startIndex..<line.endIndex, in: line)
+            guard let match = regex.firstMatch(in: line, range: range), match.numberOfRanges >= 5,
+                  let minRange = Range(match.range(at: 1), in: line),
+                  let secRange = Range(match.range(at: 2), in: line),
+                  let textRange = Range(match.range(at: 4), in: line),
+                  let minutes = Double(line[minRange]), let seconds = Double(line[secRange]) else { return nil }
+            var fraction = 0.0
+            if match.range(at: 3).location != NSNotFound, let fracRange = Range(match.range(at: 3), in: line) {
+                let digits = String(line[fracRange])
+                fraction = (Double(digits) ?? 0) / pow(10, Double(digits.count))
+            }
+            let text = String(line[textRange]).trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { return nil }
+            return LyricFeverLyricLine(startTime: (minutes * 60 + seconds + fraction) * 1000, words: text)
+        }
     }
 }
 

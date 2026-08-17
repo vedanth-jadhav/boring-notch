@@ -168,6 +168,8 @@ class MusicManager: ObservableObject {
             newController = SpotifyController()
         case .youtubeMusic:
             newController = YouTubeMusicController()
+        case .octaveStreaming:
+            newController = OctaveStreamingController()
         }
 
         // Set up state observation for the new controller
@@ -791,10 +793,8 @@ class MusicManager: ObservableObject {
 
         Task(priority: .userInitiated) {
             await controller.nextTrack()
-            // Spotify/AppleMusic controllers get push notifications via DistributedNotificationCenter
-            // which automatically triggers updatePlaybackInfo. Only NowPlayingController (which relies
-            // on the Perl subprocess stream) needs an explicit poll.
-            if controller is NowPlayingController {
+            // Controllers that do not get reliable post-command push updates opt in to an explicit poll.
+            if controller.requiresExplicitPolling {
                 try? await Task.sleep(for: .milliseconds(120))
                 await controller.updatePlaybackInfo()
             }
@@ -806,7 +806,7 @@ class MusicManager: ObservableObject {
 
         Task(priority: .userInitiated) {
             await controller.previousTrack()
-            if controller is NowPlayingController {
+            if controller.requiresExplicitPolling {
                 try? await Task.sleep(for: .milliseconds(120))
                 await controller.updatePlaybackInfo()
             }
