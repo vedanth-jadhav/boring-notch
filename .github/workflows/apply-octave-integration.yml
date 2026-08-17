@@ -14,216 +14,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply finished source pass
+      - name: Reuse staged source patch
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<'PY'
+          git show f9e9c82082b132a93dae00f099d2d5f73e3d0433:.github/workflows/apply-octave-integration.yml > "$RUNNER_TEMP/staged.yml"
+          python3 - "$RUNNER_TEMP/staged.yml" <<'PY'
           from pathlib import Path
-          import base64
-
-          PUBLIC_KEY = "TSol7IeX5WPhq/ubD0i6+6MFpZmJwRqgOBQ39fWa1nU="
-          FEED = "https://github.com/vedanth-jadhav/boring-notch/releases/download/beta/appcast.xml"
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f"expected source block not found in {path}: {old[:80]!r}")
-              p.write_text(text.replace(old, new, 1))
-
-          # Replace the entire Octave provider section atomically. This removes the circular
-          # dependency on MediaRemote's browser bundle attribution and coalesces slow tab checks.
-          octave_section = base64.b64decode("Ly8gTUFSSzogLSBPY3RhdmUgU3RyZWFtaW5nIHdlYiBjb250cm9sbGVyCi8vLyBGaXJzdC1jbGFzcyBjb250cm9sbGVyIGZvciBodHRwczovL211c2ljLm9jdGF2ZXN0cmVhbWluZy5jb20vLiBUcmFuc3BvcnQgcmVtYWlucyBvbgovLy8gTWVkaWFSZW1vdGUsIHdoaWxlIGJyb3dzZXItdGFiIGRldGVjdGlvbiBwcmV2ZW50cyB1bnJlbGF0ZWQgd2ViIG1lZGlhIGZyb20gYXBwZWFyaW5nCi8vLyB3aGVuIE9jdGF2ZSBpcyBleHBsaWNpdGx5IHNlbGVjdGVkLgpmaW5hbCBjbGFzcyBPY3RhdmVTdHJlYW1pbmdDb250cm9sbGVyOiBPYnNlcnZhYmxlT2JqZWN0LCBNZWRpYUNvbnRyb2xsZXJQcm90b2NvbCwgQHVuY2hlY2tlZCBTZW5kYWJsZSB7CiAgICBzdGF0aWMgbGV0IHN5bnRoZXRpY0J1bmRsZUlkZW50aWZpZXIgPSAiY29tLmJvcmluZ25vdGNoLm9jdGF2ZS53ZWIiCgogICAgQFB1Ymxpc2hlZCBwcml2YXRlKHNldCkgdmFyIHBsYXliYWNrU3RhdGUgPSBQbGF5YmFja1N0YXRlKGJ1bmRsZUlkZW50aWZpZXI6IHN5bnRoZXRpY0J1bmRsZUlkZW50aWZpZXIpCiAgICB2YXIgcGxheWJhY2tTdGF0ZVB1Ymxpc2hlcjogQW55UHVibGlzaGVyPFBsYXliYWNrU3RhdGUsIE5ldmVyPiB7ICRwbGF5YmFja1N0YXRlLmVyYXNlVG9BbnlQdWJsaXNoZXIoKSB9CiAgICB2YXIgc3VwcG9ydHNWb2x1bWVDb250cm9sOiBCb29sIHsgZmFsc2UgfQogICAgdmFyIHN1cHBvcnRzRmF2b3JpdGU6IEJvb2wgeyBmYWxzZSB9CiAgICB2YXIgcmVxdWlyZXNFeHBsaWNpdFBvbGxpbmc6IEJvb2wgeyB0cnVlIH0KCiAgICBwcml2YXRlIGxldCBiYXNlOiBOb3dQbGF5aW5nQ29udHJvbGxlcgogICAgcHJpdmF0ZSB2YXIgY2FuY2VsbGFibGU6IEFueUNhbmNlbGxhYmxlPwogICAgcHJpdmF0ZSB2YXIgcmVjb25jaWxpYXRpb25UYXNrOiBUYXNrPFZvaWQsIE5ldmVyPj8KICAgIHByaXZhdGUgdmFyIGJyb3dzZXJEZXRlY3Rpb25UYXNrOiBUYXNrPFZvaWQsIE5ldmVyPj8KICAgIHByaXZhdGUgdmFyIGxhdGVzdEJhc2VTdGF0ZSA9IFBsYXliYWNrU3RhdGUoYnVuZGxlSWRlbnRpZmllcjogIiIpCiAgICBwcml2YXRlIHZhciBzdGF0ZVJldmlzaW9uOiBVSW50NjQgPSAwCgogICAgcHJpdmF0ZSBzdGF0aWMgbGV0IHN1cHBvcnRlZEJyb3dzZXJCdW5kbGVJZGVudGlmaWVyUHJlZml4ZXMgPSBbCiAgICAgICAgImNvbS5icmF2ZS5Ccm93c2VyIiwKICAgICAgICAiY29tLmdvb2dsZS5DaHJvbWUiLAogICAgICAgICJjb20ubWljcm9zb2Z0LmVkZ2VtYWMiLAogICAgICAgICJjb20uYXBwbGUuU2FmYXJpIgogICAgXQoKICAgIHByaXZhdGUgc3RhdGljIGZ1bmMgaXNTdXBwb3J0ZWRCcm93c2VyQnVuZGxlSWRlbnRpZmllcihfIGJ1bmRsZUlkZW50aWZpZXI6IFN0cmluZykgLT4gQm9vbCB7CiAgICAgICAgc3VwcG9ydGVkQnJvd3NlckJ1bmRsZUlkZW50aWZpZXJQcmVmaXhlcy5jb250YWlucyB7IHByZWZpeCBpbgogICAgICAgICAgICBidW5kbGVJZGVudGlmaWVyID09IHByZWZpeCB8fCBidW5kbGVJZGVudGlmaWVyLmhhc1ByZWZpeChwcmVmaXggKyAiLiIpCiAgICAgICAgfQogICAgfQoKICAgIGluaXQ/KCkgewogICAgICAgIGd1YXJkIGxldCBiYXNlID0gTm93UGxheWluZ0NvbnRyb2xsZXIoKSBlbHNlIHsgcmV0dXJuIG5pbCB9CiAgICAgICAgc2VsZi5iYXNlID0gYmFzZQoKICAgICAgICBjYW5jZWxsYWJsZSA9IGJhc2UucGxheWJhY2tTdGF0ZVB1Ymxpc2hlcgogICAgICAgICAgICAucmVjZWl2ZShvbjogRGlzcGF0Y2hRdWV1ZS5tYWluKQogICAgICAgICAgICAuc2luayB7IFt3ZWFrIHNlbGZdIHN0YXRlIGluCiAgICAgICAgICAgICAgICBUYXNrIHsgQE1haW5BY3RvciBbd2VhayBzZWxmXSBpbgogICAgICAgICAgICAgICAgICAgIHNlbGY/LmFjY2VwdEJhc2VTdGF0ZShzdGF0ZSkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQoKICAgICAgICAvLyBNZWRpYVJlbW90ZSdzIHN0cmVhbWluZyBjYWxsYmFja3MgY2FuIGdvIHF1aWV0IG9yIHJldGFpbiBzdGFsZSBzb3VyY2UgbWV0YWRhdGEKICAgICAgICAvLyB3aGVuIENocm9taXVtIHRhYnMgYXJlIGJhY2tncm91bmRlZC4gUG9sbCB0aGUgYXV0aG9yaXRhdGl2ZSBzbmFwc2hvdCB3aGlsZSB0aGlzCiAgICAgICAgLy8gY29udHJvbGxlciBpcyBzZWxlY3RlZCBpbnN0ZWFkIG9mIHVzaW5nIHN0cmVhbSBhY3Rpdml0eSBhcyBhIHJlYXNvbiB0byBzdG9wIHBvbGxpbmcuCiAgICAgICAgcmVjb25jaWxpYXRpb25UYXNrID0gVGFzayB7IFt3ZWFrIHNlbGZdIGluCiAgICAgICAgICAgIGd1YXJkIGxldCBzZWxmIGVsc2UgeyByZXR1cm4gfQogICAgICAgICAgICBhd2FpdCBzZWxmLmJhc2UudXBkYXRlUGxheWJhY2tJbmZvKCkKICAgICAgICAgICAgd2hpbGUgIVRhc2suaXNDYW5jZWxsZWQgewogICAgICAgICAgICAgICAgdHJ5PyBhd2FpdCBUYXNrLnNsZWVwKGZvcjogLnNlY29uZHMoMikpCiAgICAgICAgICAgICAgICBndWFyZCAhVGFzay5pc0NhbmNlbGxlZCBlbHNlIHsgcmV0dXJuIH0KICAgICAgICAgICAgICAgIGF3YWl0IHNlbGYuYmFzZS51cGRhdGVQbGF5YmFja0luZm8oKQogICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQoKICAgIGRlaW5pdCB7CiAgICAgICAgcmVjb25jaWxpYXRpb25UYXNrPy5jYW5jZWwoKQogICAgICAgIGJyb3dzZXJEZXRlY3Rpb25UYXNrPy5jYW5jZWwoKQogICAgICAgIGNhbmNlbGxhYmxlPy5jYW5jZWwoKQogICAgfQoKICAgIEBNYWluQWN0b3IKICAgIHByaXZhdGUgZnVuYyBhY2NlcHRCYXNlU3RhdGUoXyBzdGF0ZTogUGxheWJhY2tTdGF0ZSkgewogICAgICAgIGxhdGVzdEJhc2VTdGF0ZSA9IHN0YXRlCiAgICAgICAgc3RhdGVSZXZpc2lvbiAmKz0gMQogICAgICAgIHN0YXJ0QnJvd3NlckRldGVjdGlvbklmTmVlZGVkKCkKICAgIH0KCiAgICAvLy8gQ29hbGVzY2UgTWVkaWFSZW1vdGUgYnVyc3RzIGludG8gYSBzaW5nbGUgYnJvd3NlciBxdWVyeS4gQSBzbG93IEFwcGxlRXZlbnQgcmVzdWx0IGlzCiAgICAvLy8gbmV2ZXIgZGlzY2FyZGVkIGZvcmV2ZXI6IGlmIHN0YXRlIGNoYW5nZWQgd2hpbGUgZGV0ZWN0aW9uIHJhbiwgdGhlIGxvb3AgaW1tZWRpYXRlbHkKICAgIC8vLyBldmFsdWF0ZXMgdGhlIG5ld2VzdCBzdGF0ZSBiZWZvcmUgZXhpdGluZy4KICAgIEBNYWluQWN0b3IKICAgIHByaXZhdGUgZnVuYyBzdGFydEJyb3dzZXJEZXRlY3Rpb25JZk5lZWRlZCgpIHsKICAgICAgICBndWFyZCBicm93c2VyRGV0ZWN0aW9uVGFzayA9PSBuaWwgZWxzZSB7IHJldHVybiB9CgogICAgICAgIGJyb3dzZXJEZXRlY3Rpb25UYXNrID0gVGFzayB7IFt3ZWFrIHNlbGZdIGluCiAgICAgICAgICAgIHdoaWxlICFUYXNrLmlzQ2FuY2VsbGVkIHsKICAgICAgICAgICAgICAgIGd1YXJkIGxldCBzZWxmIGVsc2UgeyByZXR1cm4gfQogICAgICAgICAgICAgICAgbGV0IHJldmlzaW9uID0gYXdhaXQgTWFpbkFjdG9yLnJ1biB7IHNlbGYuc3RhdGVSZXZpc2lvbiB9CiAgICAgICAgICAgICAgICBsZXQgb2N0YXZlQnJvd3NlciA9IGF3YWl0IE9jdGF2ZUJyb3dzZXJEZXRlY3Rvci5zaGFyZWQub2N0YXZlQnJvd3NlckJ1bmRsZUlkZW50aWZpZXIoKQoKICAgICAgICAgICAgICAgIGxldCBpc0NhdWdodFVwID0gYXdhaXQgTWFpbkFjdG9yLnJ1biB7IFt3ZWFrIHNlbGZdIGluCiAgICAgICAgICAgICAgICAgICAgZ3VhcmQgbGV0IHNlbGYgZWxzZSB7IHJldHVybiB0cnVlIH0KICAgICAgICAgICAgICAgICAgICBzZWxmLmFwcGx5RGV0ZWN0ZWRCcm93c2VyKG9jdGF2ZUJyb3dzZXIpCiAgICAgICAgICAgICAgICAgICAgaWYgc2VsZi5zdGF0ZVJldmlzaW9uID09IHJldmlzaW9uIHsKICAgICAgICAgICAgICAgICAgICAgICAgc2VsZi5icm93c2VyRGV0ZWN0aW9uVGFzayA9IG5pbAogICAgICAgICAgICAgICAgICAgICAgICByZXR1cm4gdHJ1ZQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICByZXR1cm4gZmFsc2UKICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICBpZiBpc0NhdWdodFVwIHsgcmV0dXJuIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KCiAgICBATWFpbkFjdG9yCiAgICBwcml2YXRlIGZ1bmMgYXBwbHlEZXRlY3RlZEJyb3dzZXIoXyBvY3RhdmVCcm93c2VyQnVuZGxlSWRlbnRpZmllcjogU3RyaW5nPykgewogICAgICAgIGd1YXJkIGxldCBvY3RhdmVCcm93c2VyQnVuZGxlSWRlbnRpZmllciBlbHNlIHsKICAgICAgICAgICAgcHVibGlzaElkbGVTdGF0ZSgpCiAgICAgICAgICAgIHJldHVybgogICAgICAgIH0KCiAgICAgICAgbGV0IHN0YXRlID0gbGF0ZXN0QmFzZVN0YXRlCiAgICAgICAgbGV0IHNvdXJjZUJ1bmRsZUlkZW50aWZpZXIgPSBzdGF0ZS5idW5kbGVJZGVudGlmaWVyLnRyaW1taW5nQ2hhcmFjdGVycyhpbjogLndoaXRlc3BhY2VzQW5kTmV3bGluZXMpCiAgICAgICAgbGV0IHNvdXJjZU1hdGNoZXNEZXRlY3RlZEJyb3dzZXIgPQogICAgICAgICAgICBzb3VyY2VCdW5kbGVJZGVudGlmaWVyID09IG9jdGF2ZUJyb3dzZXJCdW5kbGVJZGVudGlmaWVyCiAgICAgICAgICAgIHx8IHNvdXJjZUJ1bmRsZUlkZW50aWZpZXIuaGFzUHJlZml4KG9jdGF2ZUJyb3dzZXJCdW5kbGVJZGVudGlmaWVyICsgIi4iKQoKICAgICAgICBsZXQgaGFzVHJhY2tNZXRhZGF0YSA9CiAgICAgICAgICAgICFzdGF0ZS50aXRsZS50cmltbWluZ0NoYXJhY3RlcnMoaW46IC53aGl0ZXNwYWNlc0FuZE5ld2xpbmVzKS5pc0VtcHR5CiAgICAgICAgICAgIHx8ICFzdGF0ZS5hcnRpc3QudHJpbW1pbmdDaGFyYWN0ZXJzKGluOiAud2hpdGVzcGFjZXNBbmROZXdsaW5lcykuaXNFbXB0eQogICAgICAgICAgICB8fCBzdGF0ZS5kdXJhdGlvbiA+IDAKCiAgICAgICAgLy8gSWYgTWVkaWFSZW1vdGUgcG9zaXRpdmVseSBpZGVudGlmaWVzIGEgKmRpZmZlcmVudCogc3VwcG9ydGVkIGJyb3dzZXIsIGRvIG5vdCBzdGVhbAogICAgICAgIC8vIHRoYXQgYnJvd3NlcidzIHBsYXliYWNrIG1lcmVseSBiZWNhdXNlIE9jdGF2ZSBoYXBwZW5zIHRvIGJlIG9wZW4gZWxzZXdoZXJlLgogICAgICAgIGlmIFNlbGYuaXNTdXBwb3J0ZWRCcm93c2VyQnVuZGxlSWRlbnRpZmllcihzb3VyY2VCdW5kbGVJZGVudGlmaWVyKSwgIXNvdXJjZU1hdGNoZXNEZXRlY3RlZEJyb3dzZXIgewogICAgICAgICAgICBwdWJsaXNoSWRsZVN0YXRlKCkKICAgICAgICAgICAgcmV0dXJuCiAgICAgICAgfQoKICAgICAgICAvLyBDaHJvbWl1bSBzb21ldGltZXMgZHJvcHMgb3Igc3Vic3RpdHV0ZXMgdGhlIHBhcmVudCBhcHBsaWNhdGlvbiBpZGVudGl0eSB3aGlsZSBhCiAgICAgICAgLy8gYmFja2dyb3VuZCB0YWIga2VlcHMgcGxheWluZy4gT2N0YXZlIGlzIGFuIGV4cGxpY2l0bHkgc2VsZWN0ZWQgcHJvdmlkZXIsIHNvIGFuCiAgICAgICAgLy8gaW5kZXBlbmRlbnRseSBkZXRlY3RlZCBPY3RhdmUgdGFiIHBsdXMgcmVhbCBNZWRpYVJlbW90ZSB0cmFjayBtZXRhZGF0YSBpcyBhIHN0cm9uZ2VyCiAgICAgICAgLy8gc2lnbmFsIHRoYW4gYW4gdW5yZWxpYWJsZSBub24tYnJvd3NlciBzb3VyY2UgYnVuZGxlIElELiBUaGlzIGtlZXBzIEJyYXZlIGJhY2tncm91bmQKICAgICAgICAvLyBwbGF5YmFjayBhbGl2ZSB3aXRob3V0IG1ha2luZyB0YWIgZGlzY292ZXJ5IGRlcGVuZCBvbiBNZWRpYVJlbW90ZSBhdHRyaWJ1dGlvbi4KICAgICAgICBndWFyZCBzb3VyY2VNYXRjaGVzRGV0ZWN0ZWRCcm93c2VyIHx8IGhhc1RyYWNrTWV0YWRhdGEgZWxzZSB7CiAgICAgICAgICAgIHB1Ymxpc2hJZGxlU3RhdGUoKQogICAgICAgICAgICByZXR1cm4KICAgICAgICB9CgogICAgICAgIHZhciBtYXBwZWQgPSBzdGF0ZQogICAgICAgIG1hcHBlZC5idW5kbGVJZGVudGlmaWVyID0gU2VsZi5zeW50aGV0aWNCdW5kbGVJZGVudGlmaWVyCiAgICAgICAgcGxheWJhY2tTdGF0ZSA9IG1hcHBlZAogICAgfQoKICAgIEBNYWluQWN0b3IKICAgIHByaXZhdGUgZnVuYyBwdWJsaXNoSWRsZVN0YXRlKCkgewogICAgICAgIHZhciBpZGxlID0gUGxheWJhY2tTdGF0ZShidW5kbGVJZGVudGlmaWVyOiBTZWxmLnN5bnRoZXRpY0J1bmRsZUlkZW50aWZpZXIpCiAgICAgICAgaWRsZS5pc1BsYXlpbmcgPSBmYWxzZQogICAgICAgIHBsYXliYWNrU3RhdGUgPSBpZGxlCiAgICB9CgogICAgZnVuYyBzZXRGYXZvcml0ZShfIGZhdm9yaXRlOiBCb29sKSBhc3luYyB7fQogICAgZnVuYyBwbGF5KCkgYXN5bmMgeyBhd2FpdCBiYXNlLnBsYXkoKSB9CiAgICBmdW5jIHBhdXNlKCkgYXN5bmMgeyBhd2FpdCBiYXNlLnBhdXNlKCkgfQogICAgZnVuYyBzZWVrKHRvIHRpbWU6IERvdWJsZSkgYXN5bmMgeyBhd2FpdCBiYXNlLnNlZWsodG86IHRpbWUpIH0KICAgIGZ1bmMgbmV4dFRyYWNrKCkgYXN5bmMgeyBhd2FpdCBiYXNlLm5leHRUcmFjaygpIH0KICAgIGZ1bmMgcHJldmlvdXNUcmFjaygpIGFzeW5jIHsgYXdhaXQgYmFzZS5wcmV2aW91c1RyYWNrKCkgfQogICAgZnVuYyB0b2dnbGVQbGF5KCkgYXN5bmMgeyBhd2FpdCBiYXNlLnRvZ2dsZVBsYXkoKSB9CiAgICBmdW5jIHRvZ2dsZVNodWZmbGUoKSBhc3luYyB7IGF3YWl0IGJhc2UudG9nZ2xlU2h1ZmZsZSgpIH0KICAgIGZ1bmMgdG9nZ2xlUmVwZWF0KCkgYXN5bmMgeyBhd2FpdCBiYXNlLnRvZ2dsZVJlcGVhdCgpIH0KICAgIGZ1bmMgc2V0Vm9sdW1lKF8gbGV2ZWw6IERvdWJsZSkgYXN5bmMgeyBhd2FpdCBiYXNlLnNldFZvbHVtZShsZXZlbCkgfQogICAgZnVuYyBpc0FjdGl2ZSgpIC0+IEJvb2wgeyB0cnVlIH0KICAgIGZ1bmMgdXBkYXRlUGxheWJhY2tJbmZvKCkgYXN5bmMgeyBhd2FpdCBiYXNlLnVwZGF0ZVBsYXliYWNrSW5mbygpIH0KfQoKcHJpdmF0ZSBhY3RvciBPY3RhdmVCcm93c2VyRGV0ZWN0b3IgewogICAgc3RhdGljIGxldCBzaGFyZWQgPSBPY3RhdmVCcm93c2VyRGV0ZWN0b3IoKQoKICAgIHByaXZhdGUgdmFyIGNhY2hlZEJyb3dzZXJCdW5kbGVJZGVudGlmaWVyOiBTdHJpbmc/CiAgICBwcml2YXRlIHZhciBjYWNoZWRBdCA9IERhdGUuZGlzdGFudFBhc3QKICAgIHByaXZhdGUgc3RhdGljIGxldCBjYWNoZUludGVydmFsOiBUaW1lSW50ZXJ2YWwgPSAxLjUKCiAgICAvLy8gQnJvd3NlciBkZXRlY3Rpb24gaXMgZGVsaWJlcmF0ZWx5IGluZGVwZW5kZW50IG9mIE1lZGlhUmVtb3RlJ3Mgc291cmNlIGJ1bmRsZSBJRC4KICAgIC8vLyBCYWNrZ3JvdW5kIENocm9taXVtIHBsYXliYWNrIGlzIHByZWNpc2VseSB3aGVyZSB0aGF0IHNvdXJjZSBhdHRyaWJ1dGlvbiBpcyBsZWFzdAogICAgLy8vIHJlbGlhYmxlLCBzbyB1c2luZyBpdCB0byBkZWNpZGUgd2hldGhlciB0byBxdWVyeSBCcmF2ZSBjcmVhdGVzIGEgY2lyY3VsYXIgZmFpbHVyZS4KICAgIGZ1bmMgb2N0YXZlQnJvd3NlckJ1bmRsZUlkZW50aWZpZXIoKSBhc3luYyAtPiBTdHJpbmc/IHsKICAgICAgICBsZXQgbm93ID0gRGF0ZSgpCiAgICAgICAgaWYgbm93LnRpbWVJbnRlcnZhbFNpbmNlKGNhY2hlZEF0KSA8IFNlbGYuY2FjaGVJbnRlcnZhbCB7CiAgICAgICAgICAgIHJldHVybiBjYWNoZWRCcm93c2VyQnVuZGxlSWRlbnRpZmllcgogICAgICAgIH0KCiAgICAgICAgbGV0IGNhbmRpZGF0ZXM6IFsoYnVuZGxlSWRlbnRpZmllcjogU3RyaW5nLCBzY3JpcHQ6IFN0cmluZyldID0gWwogICAgICAgICAgICAoImNvbS5icmF2ZS5Ccm93c2VyIiwgU2VsZi5jaHJvbWl1bVNjcmlwdChhcHBOYW1lOiAiQnJhdmUgQnJvd3NlciIpKSwKICAgICAgICAgICAgKCJjb20uZ29vZ2xlLkNocm9tZSIsIFNlbGYuY2hyb21pdW1TY3JpcHQoYXBwTmFtZTogIkdvb2dsZSBDaHJvbWUiKSksCiAgICAgICAgICAgICgiY29tLm1pY3Jvc29mdC5lZGdlbWFjIiwgU2VsZi5jaHJvbWl1bVNjcmlwdChhcHBOYW1lOiAiTWljcm9zb2Z0IEVkZ2UiKSksCiAgICAgICAgICAgICgiY29tLmFwcGxlLlNhZmFyaSIsIFNlbGYuc2FmYXJpU2NyaXB0KQogICAgICAgIF0KCiAgICAgICAgdmFyIGRldGVjdGVkQnVuZGxlSWRlbnRpZmllcjogU3RyaW5nPwogICAgICAgIGZvciBjYW5kaWRhdGUgaW4gY2FuZGlkYXRlcyB7CiAgICAgICAgICAgIGd1YXJkICFOU1J1bm5pbmdBcHBsaWNhdGlvbi5ydW5uaW5nQXBwbGljYXRpb25zKHdpdGhCdW5kbGVJZGVudGlmaWVyOiBjYW5kaWRhdGUuYnVuZGxlSWRlbnRpZmllcikuaXNFbXB0eSBlbHNlIHsKICAgICAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGRvIHsKICAgICAgICAgICAgICAgIGlmIGxldCBkZXNjcmlwdG9yID0gdHJ5IGF3YWl0IEFwcGxlU2NyaXB0SGVscGVyLmV4ZWN1dGUoY2FuZGlkYXRlLnNjcmlwdCksIGRlc2NyaXB0b3IuYm9vbGVhblZhbHVlIHsKICAgICAgICAgICAgICAgICAgICBkZXRlY3RlZEJ1bmRsZUlkZW50aWZpZXIgPSBjYW5kaWRhdGUuYnVuZGxlSWRlbnRpZmllcgogICAgICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0gY2F0Y2ggewogICAgICAgICAgICAgICAgcHJpbnQoIk9jdGF2ZSBicm93c2VyIGRldGVjdGlvbiBBcHBsZVNjcmlwdCBmYWlsZWQgZm9yIFwoY2FuZGlkYXRlLmJ1bmRsZUlkZW50aWZpZXIpOiBcKGVycm9yKSIpCiAgICAgICAgICAgIH0KICAgICAgICB9CgogICAgICAgIGNhY2hlZEJyb3dzZXJCdW5kbGVJZGVudGlmaWVyID0gZGV0ZWN0ZWRCdW5kbGVJZGVudGlmaWVyCiAgICAgICAgY2FjaGVkQXQgPSBub3cKICAgICAgICByZXR1cm4gZGV0ZWN0ZWRCdW5kbGVJZGVudGlmaWVyCiAgICB9CgogICAgcHJpdmF0ZSBzdGF0aWMgZnVuYyBjaHJvbWl1bVNjcmlwdChhcHBOYW1lOiBTdHJpbmcpIC0+IFN0cmluZyB7CiAgICAgICAgIiIiCiAgICAgICAgaWYgYXBwbGljYXRpb24gIlwoYXBwTmFtZSkiIGlzIHJ1bm5pbmcgdGhlbgogICAgICAgICAgICB0ZWxsIGFwcGxpY2F0aW9uICJcKGFwcE5hbWUpIgogICAgICAgICAgICAgICAgcmVwZWF0IHdpdGggdyBpbiB3aW5kb3dzCiAgICAgICAgICAgICAgICAgICAgcmVwZWF0IHdpdGggdCBpbiB0YWJzIG9mIHcKICAgICAgICAgICAgICAgICAgICAgICAgdHJ5CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiAoVVJMIG9mIHQpIHN0YXJ0cyB3aXRoICJodHRwczovL211c2ljLm9jdGF2ZXN0cmVhbWluZy5jb20iIHRoZW4gcmV0dXJuIHRydWUKICAgICAgICAgICAgICAgICAgICAgICAgZW5kIHRyeQogICAgICAgICAgICAgICAgICAgIGVuZCByZXBlYXQKICAgICAgICAgICAgICAgIGVuZCByZXBlYXQKICAgICAgICAgICAgZW5kIHRlbGwKICAgICAgICBlbmQgaWYKICAgICAgICByZXR1cm4gZmFsc2UKICAgICAgICAiIiIKICAgIH0KCiAgICBwcml2YXRlIHN0YXRpYyBsZXQgc2FmYXJpU2NyaXB0ID0gIiIiCiAgICBpZiBhcHBsaWNhdGlvbiAiU2FmYXJpIiBpcyBydW5uaW5nIHRoZW4KICAgICAgICB0ZWxsIGFwcGxpY2F0aW9uICJTYWZhcmkiCiAgICAgICAgICAgIHJlcGVhdCB3aXRoIHcgaW4gd2luZG93cwogICAgICAgICAgICAgICAgcmVwZWF0IHdpdGggdCBpbiB0YWJzIG9mIHcKICAgICAgICAgICAgICAgICAgICB0cnkKICAgICAgICAgICAgICAgICAgICAgICAgaWYgKFVSTCBvZiB0KSBzdGFydHMgd2l0aCAiaHR0cHM6Ly9tdXNpYy5vY3RhdmVzdHJlYW1pbmcuY29tIiB0aGVuIHJldHVybiB0cnVlCiAgICAgICAgICAgICAgICAgICAgZW5kIHRyeQogICAgICAgICAgICAgICAgZW5kIHJlcGVhdAogICAgICAgICAgICBlbmQgcmVwZWF0CiAgICAgICAgZW5kIHRlbGwKICAgIGVuZCBpZgogICAgcmV0dXJuIGZhbHNlCiAgICAiIiIKfQo=").decode()
-          path = Path("boringNotch/MediaControllers/NowPlayingController.swift")
-          text = path.read_text()
-          marker = "// MARK: - Octave Streaming web controller"
-          if marker not in text:
-              raise SystemExit("Octave controller marker missing")
-          path.write_text(text[:text.index(marker)] + octave_section)
-
-          replace_once(
-              "boringNotch/Info.plist",
-              "\t<key>SUAutomaticallyUpdate</key>\n\t<false/>",
-              "\t<key>SUAutomaticallyUpdate</key>\n\t<true/>\n\t<key>SUAllowsAutomaticUpdates</key>\n\t<true/>\n\t<key>SUScheduledCheckInterval</key>\n\t<integer>3600</integer>",
-          )
-          replace_once("boringNotch/Info.plist", "https://TheBoredTeam.github.io/boring.notch/appcast.xml", FEED)
-          replace_once("boringNotch/Info.plist", "B1Y47t8C/v8ImurYA+9arEsuCrpxwJSviekiflMElbI=", PUBLIC_KEY)
-
-          replace_once(
-              "boringNotch/components/Settings/SoftwareUpdater.swift",
-              "import SwiftUI\nimport Sparkle\n",
-              '''import SwiftUI
-          import Sparkle
-
-          /// The fork publishes prereleases on Sparkle's `beta` channel. Sparkle only
-          /// considers the default channel unless the updater delegate explicitly opts in.
-          final class BoringNotchUpdaterDelegate: NSObject, SPUUpdaterDelegate {
-              func allowedChannels(for updater: SPUUpdater) -> Set<String> {
-                  ["beta"]
-              }
-          }
-          ''',
-          )
-          replace_once(
-              "boringNotch/components/Settings/SoftwareUpdater.swift",
-              'Toggle("Automatically download updates", isOn: $automaticallyDownloadsUpdates)',
-              'Toggle("Automatically download and install updates", isOn: $automaticallyDownloadsUpdates)',
-          )
-
-          replace_once(
-              "boringNotch/boringNotchApp.swift",
-              '''    let updaterController: SPUStandardUpdaterController
-
-              init() {
-                  updaterController = SPUStandardUpdaterController(
-                      startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-          ''',
-              '''    let updaterDelegate: BoringNotchUpdaterDelegate
-              let updaterController: SPUStandardUpdaterController
-
-              init() {
-                  let updaterDelegate = BoringNotchUpdaterDelegate()
-                  self.updaterDelegate = updaterDelegate
-                  updaterController = SPUStandardUpdaterController(
-                      startingUpdater: true, updaterDelegate: updaterDelegate, userDriverDelegate: nil)
-
-                  // Migrate installs that inherited the upstream fork's disabled auto-download default.
-                  // Do this once so later user choices in Settings remain respected.
-                  let updaterDefaultsMigrationKey = "BoringNotchForkUpdaterDefaultsV1"
-                  if !UserDefaults.standard.bool(forKey: updaterDefaultsMigrationKey) {
-                      updaterController.updater.automaticallyChecksForUpdates = true
-                      updaterController.updater.automaticallyDownloadsUpdates = true
-                      UserDefaults.standard.set(true, forKey: updaterDefaultsMigrationKey)
-                  }
-          ''',
-          )
-
-          replace_once(
-              "Scripts/package_swift_cli.sh",
-              '''MARKETING_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ROOT/boringNotch/Info.plist" 2>/dev/null || echo "1.0")
-          BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$ROOT/boringNotch/Info.plist" 2>/dev/null || echo "1")
-          ''',
-              '''PBXPROJ="$ROOT/boringNotch.xcodeproj/project.pbxproj"
-          MARKETING_VERSION="${MARKETING_VERSION:-$(sed -n 's/.*MARKETING_VERSION = \\([^;]*\\);.*/\\1/p' "$PBXPROJ" | head -1)}"
-          BUILD_NUMBER="${BUILD_NUMBER:-$(sed -n 's/.*CURRENT_PROJECT_VERSION = \\([^;]*\\);.*/\\1/p' "$PBXPROJ" | head -1)}"
-          [[ -n "$MARKETING_VERSION" ]] || { echo "ERROR: unable to resolve MARKETING_VERSION from $PBXPROJ" >&2; exit 1; }
-          [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || { echo "ERROR: invalid CURRENT_PROJECT_VERSION '$BUILD_NUMBER'" >&2; exit 1; }
-          ''',
-          )
-          replace_once(
-              "Scripts/package_swift_cli.sh",
-              '''  <key>SUEnableInstallerLauncherService</key>
-            <true/>
-            <key>SUFeedURL</key>
-            <string>https://TheBoredTeam.github.io/boring.notch/appcast.xml</string>
-            <key>SUPublicEDKey</key>
-            <string>B1Y47t8C/v8ImurYA+9arEsuCrpxwJSviekiflMElbI=</string>
-          ''',
-              f'''  <key>SUEnableInstallerLauncherService</key>
-            <true/>
-            <key>SUEnableAutomaticChecks</key>
-            <true/>
-            <key>SUAutomaticallyUpdate</key>
-            <true/>
-            <key>SUAllowsAutomaticUpdates</key>
-            <true/>
-            <key>SUScheduledCheckInterval</key>
-            <integer>3600</integer>
-            <key>SUFeedURL</key>
-            <string>{FEED}</string>
-            <key>SUPublicEDKey</key>
-            <string>{PUBLIC_KEY}</string>
-          ''',
-          )
-
-          replace_once(
-              ".github/workflows/beta_release.yml",
-              '/usr/libexec/PlistBuddy -c "Set :SUAutomaticallyUpdate false" boringNotch/Info.plist',
-              '/usr/libexec/PlistBuddy -c "Set :SUAutomaticallyUpdate true" boringNotch/Info.plist',
-          )
-          replace_once(
-              ".github/workflows/beta_release.yml",
-              "          /usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' \"$APP/Contents/Info.plist\" >/dev/null",
-              f'''          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" = "{PUBLIC_KEY}"
-                    test "$(/usr/libexec/PlistBuddy -c 'Print :SUAutomaticallyUpdate' "$APP/Contents/Info.plist")" = "true"''',
-          )
-
-          replace_once(
-              ".github/workflows/manual_build.yml",
-              '''      - name: Detect Sparkle signing capability
-                  run: |
-                    set -euo pipefail
-                    # The repository already contains an upstream appcast. Never let that historical
-                    # feed masquerade as a freshly signed beta feed merely because it exists on disk.
-                    rm -rf updater
-                    if [[ -n "$SPARKLE_PRIVATE_KEY" ]]; then
-                      echo "SPARKLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
-                      echo "Sparkle private key is available; publishing a signed beta appcast."
-                    else
-                      echo "SPARKLE_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
-                      echo "::warning::PRIVATE_SPARKLE_KEY is not configured. The validated DMG will still be released, but no unsigned/insecure Sparkle appcast will be published."
-                    fi
-          ''',
-              '''      - name: Require Sparkle signing key
-                  run: |
-                    set -euo pipefail
-                    # A beta without a signed appcast looks releasable but silently breaks both
-                    # "Check for Updates" and scheduled updates. Refuse to publish that state.
-                    rm -rf updater
-                    if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
-                      echo "::error::PRIVATE_SPARKLE_KEY is required to publish Boring Notch Beta."
-                      exit 1
-                    fi
-                    echo "SPARKLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
-          ''',
-          )
-          replace_once(
-              ".github/workflows/manual_build.yml",
-              '''          assets=("Release/${BETA_DMG_NAME}" "Release/${BETA_DMG_NAME}.sha256")
-                    notes="Beta ${VERSION}: Octave Streaming integration, media-control/seek fixes, Octave-first romanised lyrics, performance work, and macOS 26.5 validation."
-                    if [[ -f updater/appcast.xml ]]; then
-                      assets+=(updater/appcast.xml)
-                      notes+=" Secure Sparkle auto-update feed is included."
-                    else
-                      notes+=" Auto-update code is wired to the beta release channel, but the signed appcast is intentionally not published until the repository owner provisions PRIVATE_SPARKLE_KEY matching the app's SUPublicEDKey."
-                    fi
-          ''',
-              '''          test -f updater/appcast.xml
-                    assets=("Release/${BETA_DMG_NAME}" "Release/${BETA_DMG_NAME}.sha256" "updater/appcast.xml")
-                    notes="Beta ${VERSION}: Octave Streaming integration, media-control/seek fixes, Octave-first romanised lyrics, performance work, and signed Sparkle auto-updates."
-          ''',
-          )
-          replace_once(
-              ".github/workflows/manual_build.yml",
-              '''          if [[ "$SPARKLE_SIGNING_AVAILABLE" == "true" ]]; then
-                      echo "$asset_names" | grep -Fx 'appcast.xml'
-                      curl -fL --retry 4 --retry-delay 3 \\
-                        "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" \\
-                        -o "$RUNNER_TEMP/published-appcast.xml"
-                      grep -q 'sparkle:edSignature' "$RUNNER_TEMP/published-appcast.xml"
-                    else
-                      if echo "$asset_names" | grep -Fxq 'appcast.xml'; then
-                        echo "::error::Unsigned/stale appcast.xml was unexpectedly published."
-                        exit 1
-                      fi
-                    fi
-          ''',
-              '''          echo "$asset_names" | grep -Fx 'appcast.xml'
-                    curl -fL --retry 4 --retry-delay 3 \\
-                      "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" \\
-                      -o "$RUNNER_TEMP/published-appcast.xml"
-                    grep -q 'sparkle:edSignature' "$RUNNER_TEMP/published-appcast.xml"
-          ''',
-          )
+          import sys, textwrap
+          text = Path(sys.argv[1]).read_text()
+          marker = "          python3 <<'PY'\n"
+          start = text.index(marker) + len(marker)
+          end = text.index("\n          PY\n", start)
+          script = textwrap.dedent(text[start:end])
+          exec(compile(script, "staged-source-pass.py", "exec"), {})
           PY
 
-          # Keep the staging workflow out of the PR tree.
-          git checkout origin/main -- .github/workflows/apply-octave-integration.yml
+          # Workflow files are written separately through the GitHub connector because the
+          # Actions token is intentionally not allowed to update workflow definitions.
+          git restore --source=HEAD -- .github/workflows/beta_release.yml .github/workflows/manual_build.yml
           git diff --check
           git status --short
 
-      - name: Commit finished pass
+      - name: Commit source pass
         shell: bash
         run: |
           set -euo pipefail
@@ -233,9 +46,6 @@ jobs:
                   boringNotch/Info.plist \
                   boringNotch/components/Settings/SoftwareUpdater.swift \
                   boringNotch/boringNotchApp.swift \
-                  Scripts/package_swift_cli.sh \
-                  .github/workflows/beta_release.yml \
-                  .github/workflows/manual_build.yml \
-                  .github/workflows/apply-octave-integration.yml
+                  Scripts/package_swift_cli.sh
           git commit -m "fix: make Octave detection and fork updater reliable"
           git push origin HEAD:fix/octave-updater-runtime
