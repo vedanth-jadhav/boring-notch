@@ -71,6 +71,9 @@ jobs:
       - name: Detect Sparkle signing capability
         run: |
           set -euo pipefail
+          # The repository already contains an upstream appcast. Never let that historical
+          # feed masquerade as a freshly signed beta feed merely because it exists on disk.
+          rm -rf updater
           if [[ -n "$SPARKLE_PRIVATE_KEY" ]]; then
             echo "SPARKLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
             echo "Sparkle private key is available; publishing a signed beta appcast."
@@ -202,7 +205,7 @@ jobs:
             assets+=(updater/appcast.xml)
             notes+=" Secure Sparkle auto-update feed is included."
           else
-            notes+=" Auto-update code is wired to the beta release channel, but the signed appcast is intentionally not published until the repository owner provisions PRIVATE_SPARKLE_KEY."
+            notes+=" Auto-update code is wired to the beta release channel, but the signed appcast is intentionally not published until the repository owner provisions PRIVATE_SPARKLE_KEY matching the app's SUPublicEDKey."
           fi
 
           gh release delete "$BETA_TAG" --cleanup-tag --yes >/dev/null 2>&1 || true
@@ -218,11 +221,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release view "$BETA_TAG" --json tagName,name,isPrerelease,url,assets
-          gh release view "$BETA_TAG" --json assets --jq '.assets[].name' | grep -Fx "$BETA_DMG_NAME"
+          release_json="$(gh release view "$BETA_TAG" --json tagName,name,isPrerelease,url,assets)"
+          echo "$release_json"
+          asset_names="$(gh release view "$BETA_TAG" --json assets --jq '.assets[].name')"
+          echo "$asset_names" | grep -E '^Boring[ .]Notch[ .]Beta\.dmg$'
           if [[ "$SPARKLE_SIGNING_AVAILABLE" == "true" ]]; then
+            echo "$asset_names" | grep -Fx 'appcast.xml'
             curl -fL --retry 4 --retry-delay 3 \
               "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" \
               -o "$RUNNER_TEMP/published-appcast.xml"
             grep -q 'sparkle:edSignature' "$RUNNER_TEMP/published-appcast.xml"
+          else
+            if echo "$asset_names" | grep -Fxq 'appcast.xml'; then
+              echo "::error::Unsigned/stale appcast.xml was unexpectedly published."
+              exit 1
+            fi
           fi
