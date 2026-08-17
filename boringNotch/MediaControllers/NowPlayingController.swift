@@ -453,7 +453,7 @@ actor JSONLinesPipeHandler {
 /// First-class controller for https://music.octavestreaming.com/. Transport remains on
 /// MediaRemote, while browser-tab detection prevents unrelated web media from appearing
 /// when Octave is explicitly selected.
-final class OctaveStreamingController: ObservableObject, MediaControllerProtocol {
+final class OctaveStreamingController: ObservableObject, MediaControllerProtocol, @unchecked Sendable {
     static let syntheticBundleIdentifier = "com.boringnotch.octave.web"
 
     @Published private(set) var playbackState = PlaybackState(bundleIdentifier: syntheticBundleIdentifier)
