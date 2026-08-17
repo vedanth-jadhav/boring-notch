@@ -140,6 +140,7 @@
 		ED1000062F20000100000001 /* LockScreenLyricsTranslationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000162F20000100000001 /* LockScreenLyricsTranslationBridge.swift */; };
 		ED1000072F20000100000001 /* BoringLyricLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000172F20000100000001 /* BoringLyricLine.swift */; };
 		ED1000082F20000100000001 /* LyricFeverLyricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000182F20000100000001 /* LyricFeverLyricsService.swift */; };
+		ED1000092F20000100000001 /* LockScreenLyricLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1000192F20000100000001 /* LockScreenLyricLineView.swift */; };
 		B1A78C822C8BA08100BD51B0 /* FullscreenMediaDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A78C812C8BA08100BD51B0 /* FullscreenMediaDetection.swift */; };
 		B1B112912C6A572100093D8F /* EditPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B112902C6A572100093D8F /* EditPanelView.swift */; };
 		B1B112932C6A577E00093D8F /* MouseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B112922C6A577E00093D8F /* MouseTracker.swift */; };
@@ -538,6 +539,7 @@
 				149E0B982C737D26006418B1 /* Webcam */,
 				B18654312C6F45AE000B926A /* Live activities */,
 				ED1000202F20000100000001 /* LockScreen */,
+				ED1000232F20000100000001 /* Lyrics */,
 				ED00001A2F10000100000001 /* System */,
 				A70200022F30000100000001 /* Buds */,
 				B18654302C6F4590000B926A /* Settings */,
@@ -575,6 +577,14 @@
 				ED1000222F20000100000001 /* Lyrics */,
 			);
 			path = managers;
+			sourceTree = "<group>";
+		};
+		ED1000232F20000100000001 /* Lyrics */ = {
+			isa = PBXGroup;
+			children = (
+				ED1000192F20000100000001 /* LockScreenLyricLineView.swift */,
+			);
+			path = Lyrics;
 			sourceTree = "<group>";
 		};
 		ED1000202F20000100000001 /* LockScreen */ = {
@@ -1164,6 +1174,7 @@
 				ED1000062F20000100000001 /* LockScreenLyricsTranslationBridge.swift in Sources */,
 				ED1000072F20000100000001 /* BoringLyricLine.swift in Sources */,
 				ED1000082F20000100000001 /* LyricFeverLyricsService.swift in Sources */,
+				ED1000092F20000100000001 /* LockScreenLyricLineView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
