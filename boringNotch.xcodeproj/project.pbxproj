@@ -329,6 +329,7 @@
 		ED1000162F20000100000001 /* LockScreenLyricsTranslationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenLyricsTranslationBridge.swift; sourceTree = "<group>"; };
 		ED1000172F20000100000001 /* BoringLyricLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoringLyricLine.swift; sourceTree = "<group>"; };
 		ED1000182F20000100000001 /* LyricFeverLyricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricFeverLyricsService.swift; sourceTree = "<group>"; };
+		ED1000192F20000100000001 /* LockScreenLyricLineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenLyricLineView.swift; sourceTree = "<group>"; };
 		B1A78C812C8BA08100BD51B0 /* FullscreenMediaDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullscreenMediaDetection.swift; sourceTree = "<group>"; };
 		B1B112902C6A572100093D8F /* EditPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPanelView.swift; sourceTree = "<group>"; };
 		B1B112922C6A577E00093D8F /* MouseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseTracker.swift; sourceTree = "<group>"; };
