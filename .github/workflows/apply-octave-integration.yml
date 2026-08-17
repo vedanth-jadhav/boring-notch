@@ -1,40 +1,60 @@
-name: Apply Octave Integration
-
+name: Apply final Octave fallback
 on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "Branch or commit to validate"
-        required: false
-        default: "feat/octave-streaming-integration-clean"
-
+        required: true
+        default: fix/octave-detection-and-updater
 permissions:
   contents: write
-
 jobs:
-  apply-and-build:
+  apply-fix:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
-      - name: Verify project repair is already committed
-        run: python3 Scripts/fix_project_membership.py
-      - name: Verify patch markers
+      - name: Harden unavailable browser fallback
+        shell: bash
         run: |
-          grep -q 'case octaveStreaming' boringNotch/models/Constants.swift
-          grep -q 'OctaveStreamingController' boringNotch/MediaControllers/NowPlayingController.swift
-          grep -q 'Octave Lyric Provider' boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --exit-code -- boringNotch.xcodeproj/project.pbxproj
-      - name: Commit generated integration
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('boringNotch/MediaControllers/NowPlayingController.swift')
+          text = path.read_text()
+          old = '''                    if Self.isSupportedBrowserBundleIdentifier(state.bundleIdentifier),
+                       state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        var mapped = state
+                        mapped.bundleIdentifier = Self.syntheticBundleIdentifier
+                        self.playbackState = mapped
+                    } else {
+                        self.publishIdleState()
+                    }'''
+          new = '''                    if state.isPlaying || !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        // `.unavailable` is only returned when at least one supported browser is
+                        // running and every attempted browser automation request failed. Chromium
+                        // helper/PWA MediaRemote owners are often not the browser's canonical
+                        // bundle identifier, so do not throw away otherwise valid media metadata.
+                        var mapped = state
+                        mapped.bundleIdentifier = Self.syntheticBundleIdentifier
+                        self.playbackState = mapped
+                    } else {
+                        self.publishIdleState()
+                    }'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one fallback block, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+          git diff --check
+      - name: Restore workflow and commit source fix
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add boringNotch/models/Constants.swift boringNotch/managers/MusicManager.swift boringNotch/MediaControllers/NowPlayingController.swift boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
-          git diff --cached --quiet || git commit -m 'Integrate Octave streaming provider'
+          git checkout origin/main -- .github/workflows/apply-octave-integration.yml
+          git add boringNotch/MediaControllers/NowPlayingController.swift .github/workflows/apply-octave-integration.yml
+          git diff --cached --check
+          git commit -m "Handle blocked browser automation for Octave media"
           git push origin "HEAD:${{ inputs.source_ref }}"
-      - name: Build with Xcode 27 preview
-        run: |
-          sudo xcode-select -s /Applications/Xcode_27.0.app/Contents/Developer
-          xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
