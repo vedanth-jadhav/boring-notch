@@ -57,7 +57,7 @@ jobs:
       PROJECT_NAME: boringNotch
       BETA_TAG: beta
       BETA_DMG_NAME: Boring Notch Beta.dmg
-      VERSION: ${{ github.event.inputs.version || '2.7.4' }}
+      VERSION: ${{ github.event.inputs.version || '2.7.6' }}
       HEAD_REF: ${{ github.event.inputs.head_ref || github.ref_name }}
       XCODE_VERSION: ${{ github.event.inputs.xcode_version || '26.6' }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.PRIVATE_SPARKLE_KEY }}
@@ -68,19 +68,17 @@ jobs:
           ref: ${{ env.HEAD_REF }}
           fetch-depth: 0
 
-      - name: Detect Sparkle signing capability
+      - name: Require Sparkle signing key
         run: |
           set -euo pipefail
-          # The repository already contains an upstream appcast. Never let that historical
-          # feed masquerade as a freshly signed beta feed merely because it exists on disk.
+          # A beta without a signed appcast looks releasable but silently breaks both
+          # "Check for Updates" and scheduled updates. Refuse to publish that state.
           rm -rf updater
-          if [[ -n "$SPARKLE_PRIVATE_KEY" ]]; then
-            echo "SPARKLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
-            echo "Sparkle private key is available; publishing a signed beta appcast."
-          else
-            echo "SPARKLE_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
-            echo "::warning::PRIVATE_SPARKLE_KEY is not configured. The validated DMG will still be released, but no unsigned/insecure Sparkle appcast will be published."
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "::error::PRIVATE_SPARKLE_KEY is required to publish Boring Notch Beta."
+            exit 1
           fi
+          echo "SPARKLE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
 
       - name: Select Xcode for Sparkle tooling
         if: ${{ env.SPARKLE_SIGNING_AVAILABLE == 'true' }}
@@ -220,14 +218,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          assets=("Release/${BETA_DMG_NAME}" "Release/${BETA_DMG_NAME}.sha256")
-          notes="Beta ${VERSION}: Octave Streaming integration, media-control/seek fixes, Octave-first romanised lyrics, performance work, and macOS 26.5 validation."
-          if [[ -f updater/appcast.xml ]]; then
-            assets+=(updater/appcast.xml)
-            notes+=" Secure Sparkle auto-update feed is included."
-          else
-            notes+=" Auto-update code is wired to the beta release channel, but the signed appcast is intentionally not published until the repository owner provisions PRIVATE_SPARKLE_KEY matching the app's SUPublicEDKey."
-          fi
+          test -f updater/appcast.xml
+          assets=("Release/${BETA_DMG_NAME}" "Release/${BETA_DMG_NAME}.sha256" "updater/appcast.xml")
+          notes="Beta ${VERSION}: Octave Streaming integration, media-control/seek fixes, Octave-first romanised lyrics, performance work, and signed Sparkle auto-updates."
 
           if gh release view "$BETA_TAG" >/dev/null 2>&1; then
             gh release upload "$BETA_TAG" "${assets[@]}" --clobber
@@ -249,15 +242,8 @@ jobs:
           echo "$release_json"
           asset_names="$(gh release view "$BETA_TAG" --json assets --jq '.assets[].name')"
           echo "$asset_names" | grep -E '^Boring[ .]Notch[ .]Beta\.dmg$'
-          if [[ "$SPARKLE_SIGNING_AVAILABLE" == "true" ]]; then
-            echo "$asset_names" | grep -Fx 'appcast.xml'
-            curl -fL --retry 4 --retry-delay 3 \
-              "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" \
-              -o "$RUNNER_TEMP/published-appcast.xml"
-            grep -q 'sparkle:edSignature' "$RUNNER_TEMP/published-appcast.xml"
-          else
-            if echo "$asset_names" | grep -Fxq 'appcast.xml'; then
-              echo "::error::Unsigned/stale appcast.xml was unexpectedly published."
-              exit 1
-            fi
-          fi
+          echo "$asset_names" | grep -Fx 'appcast.xml'
+          curl -fL --retry 4 --retry-delay 3 \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${BETA_TAG}/appcast.xml" \
+            -o "$RUNNER_TEMP/published-appcast.xml"
+          grep -q 'sparkle:edSignature' "$RUNNER_TEMP/published-appcast.xml"
