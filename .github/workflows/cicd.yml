@@ -8,38 +8,62 @@ on:
     branches:
       - '*'
 
-# https://stackoverflow.com/a/72408109/6942800
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# Least-privilege: only needs to read code for building.
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build Boring Notch
-    strategy:
-      matrix:
-        platform:
-          - macOS
-        xcode:
-          - ^16
-        scheme:
-          - boringNotch
-    runs-on: macos-latest
+    name: Build Boring Notch (macOS 26.5, Xcode 26.6)
+    runs-on: macos-26
     steps:
-    - name: Code Checkout
-      # TODO: pin to immutable SHA
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-    - # TODO: pin to immutable SHA
-      uses: mxcl/xcodebuild@d3ee9b419c1be9a988086c58fe0988f32d99cfc5 # v3.6.0
-      with:
-        xcode: ${{ matrix.xcode }}
-        platform: ${{ matrix.platform }}
-        scheme: ${{ matrix.scheme }}
-        action: build
-        verbosity: xcpretty
-        upload-logs: always
-        configuration: release
+      - name: Code Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Select Xcode 26.6
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+          sw_vers
+          test "$(xcrun --show-sdk-version)" = "26.5"
+
+      - name: Repair project membership
+        run: |
+          set -euo pipefail
+          python3 Scripts/fix_project_membership.py
+          git diff --check
+
+      - name: Swift CLI validation
+        run: |
+          set -euo pipefail
+          swift --version
+          xcrun swiftc -parse boringNotch/models/Constants.swift
+          xcrun swiftc -parse boringNotch/components/Onboarding/MusicControllerSelectionView.swift
+          xcrun swiftc -parse boringNotch/MediaControllers/NowPlayingController.swift
+          xcrun swiftc -parse boringNotch/managers/MusicManager.swift
+          xcrun swiftc -parse boringNotch/managers/Lyrics/LyricFeverLyricsService.swift
+          xcrun swiftc -parse boringNotch/components/Lyrics/LockScreenLyricLineView.swift
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project boringNotch.xcodeproj
+
+      - name: Build universal Release app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project boringNotch.xcodeproj \
+            -scheme boringNotch \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            build | tee "$RUNNER_TEMP/xcodebuild.log"
+
+      - name: Reject integration warnings
+        run: |
+          set -euo pipefail
+          ! grep -E 'warning:.*(OctaveStreamingController|LyricFeverOctaveLyricProvider|NowPlayingController|ThermalDetailMonitor|LyricRomanizationService|BudsAppModel)' "$RUNNER_TEMP/xcodebuild.log"
