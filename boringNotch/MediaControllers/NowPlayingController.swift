@@ -503,7 +503,7 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
     private var detectionGeneration = 0
     private var lastBaseStateAt = Date.distantPast
 
-    private static let supportedBrowserBundleIdentifierPrefixes = [
+    private static let supportedBrowserBundleIdentifiers = [
         "com.apple.Safari",
         "com.google.Chrome",
         "com.brave.Browser",
@@ -511,7 +511,7 @@ final class OctaveStreamingController: ObservableObject, MediaControllerProtocol
     ]
 
     private static func isSupportedBrowserBundleIdentifier(_ bundleIdentifier: String) -> Bool {
-        supportedBrowserBundleIdentifierPrefixes.contains { prefix in
+        supportedBrowserBundleIdentifiers.contains { prefix in
             bundleIdentifier == prefix || bundleIdentifier.hasPrefix(prefix + ".")
         }
     }
