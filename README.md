@@ -39,6 +39,16 @@ Say hello to **Boring Notch**, the coolest way to make your MacBook’s notch th
 - [Buy us a coffee!](#buy-us-a-coffee)
 - [Acknowledgments](#-acknowledgments)-->
 
+## Fork status and attribution
+
+This repository is a modified copy of [TheBoredTeam/boring.notch](https://github.com/TheBoredTeam/boring.notch). The original project, product copy, assets, and most of the code belong to TheBoredTeam and its contributors. Upstream is licensed under GPL-3.0.
+
+GitHub does not currently display this repository as a fork, so the relationship is stated here explicitly. For the original releases, documentation, issue tracker, and community links, use the upstream repository.
+
+## What changed here
+
+This version adds Octave-aware media handling, including background detection for Octave playback in Brave. The rest of the README below is retained from upstream for product and build context. Upstream download and Homebrew links install TheBoredTeam's release, not a build from this repository.
+
 ## Installation
 
 **System Requirements:**
@@ -187,5 +197,4 @@ For a full list of licenses and attributions, please see the [Third-Party Licens
 
 - **SwiftUI**: For making us look like coding wizards.
 - **You**: For being awesome and checking out **boring.notch**!
-
 
